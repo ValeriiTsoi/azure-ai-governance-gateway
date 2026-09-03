@@ -30,3 +30,4 @@ crash.*.log
 .idea/
 .vscode/
 .cursor/
+/services/governance-api/bin/
