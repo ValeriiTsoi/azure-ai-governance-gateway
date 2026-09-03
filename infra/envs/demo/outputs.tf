@@ -37,3 +37,19 @@ output "container_registry_login_server" {
 output "container_app_environment_name" {
   value = azurerm_container_app_environment.demo.name
 }
+
+output "postgresql_server_name" {
+  value = azurerm_postgresql_flexible_server.demo.name
+}
+
+output "postgresql_server_fqdn" {
+  value = azurerm_postgresql_flexible_server.demo.fqdn
+}
+
+output "postgresql_database_name" {
+  value = azurerm_postgresql_flexible_server_database.aigov.name
+}
+
+output "postgresql_admin_login" {
+  value = azurerm_postgresql_flexible_server.demo.administrator_login
+}
