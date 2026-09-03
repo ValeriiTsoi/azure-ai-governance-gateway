@@ -1,20 +1,28 @@
 package config
 
 import (
+	"fmt"
 	"os"
 )
 
 type Config struct {
-	Port string
+	Port        string
+	DatabaseURL string
 }
 
-func Load() Config {
+func Load() (Config, error) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	return Config{
-		Port: port,
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}
+
+	return Config{
+		Port:        port,
+		DatabaseURL: databaseURL,
+	}, nil
 }

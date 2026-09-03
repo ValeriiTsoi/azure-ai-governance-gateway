@@ -11,14 +11,29 @@ import (
 	"time"
 
 	"governance-api/internal/config"
+	"governance-api/internal/database"
 	"governance-api/internal/httpserver"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	cfg := config.Load()
 
-	api := httpserver.New(logger)
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+
+	db, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("database initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	api := httpserver.New(logger, db)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -29,7 +44,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(
+	signalCtx, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -49,7 +64,7 @@ func main() {
 		}
 	}()
 
-	<-ctx.Done()
+	<-signalCtx.Done()
 
 	logger.Info("shutdown requested")
 
