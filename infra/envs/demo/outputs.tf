@@ -25,3 +25,15 @@ output "application_insights_name" {
 output "key_vault_name" {
   value = azurerm_key_vault.demo.name
 }
+
+output "container_registry_name" {
+  value = azurerm_container_registry.demo.name
+}
+
+output "container_registry_login_server" {
+  value = azurerm_container_registry.demo.login_server
+}
+
+output "container_app_environment_name" {
+  value = azurerm_container_app_environment.demo.name
+}

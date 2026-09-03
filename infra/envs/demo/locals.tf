@@ -6,7 +6,7 @@ locals {
     managed_by  = "terraform"
   }
 
-  # Key Vault names must be globally unique.
+  # Globally unique and deterministic suffix for this subscription.
   unique_suffix = substr(
     md5(data.azurerm_client_config.current.subscription_id),
     0,
@@ -14,4 +14,7 @@ locals {
   )
 
   key_vault_name = "kv-aigov-${local.unique_suffix}"
+
+  # Azure Container Registry names may contain only letters and numbers.
+  container_registry_name = "acraigov${local.unique_suffix}"
 }
