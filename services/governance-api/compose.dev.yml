@@ -15,5 +15,17 @@ services:
     volumes:
       - aigov-postgres-data:/var/lib/postgresql/data
 
+  governance-api:
+    image: governance-api:local
+    platform: linux/amd64
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://aigovadmin:${POSTGRES_PASSWORD}@postgres:5432/aigov?sslmode=disable"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   aigov-postgres-data:
