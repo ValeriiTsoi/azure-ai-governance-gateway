@@ -53,3 +53,23 @@ output "postgresql_database_name" {
 output "postgresql_admin_login" {
   value = azurerm_postgresql_flexible_server.demo.administrator_login
 }
+
+output "governance_api_identity_name" {
+  value = azurerm_user_assigned_identity.governance_api.name
+}
+
+output "governance_api_identity_principal_id" {
+  value = azurerm_user_assigned_identity.governance_api.principal_id
+}
+
+output "governance_api_image" {
+  value = local.governance_api_image
+}
+
+output "governance_api_fqdn" {
+  value = azurerm_container_app.governance_api.ingress[0].fqdn
+}
+
+output "governance_api_url" {
+  value = "https://${azurerm_container_app.governance_api.ingress[0].fqdn}"
+}
