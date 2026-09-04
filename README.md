@@ -6,8 +6,8 @@ Azure AI Governance Gateway is a reference implementation for governing enterpri
 
 The project demonstrates how organizations can introduce a centralized governance layer between enterprise applications and AI providers to enforce policy, identity, auditability, model routing, data classification and usage/cost controls.
 
-> **Status:** Active development  
-> **Current milestone:** Stage 3C completed — governance workflow running end-to-end in Azure  
+> **Status:** Active development
+> **Current milestone:** Stage 3C completed — governance workflow running end-to-end in Azure
 > **Deployment:** Microsoft Azure, Sweden Central
 
 ---
