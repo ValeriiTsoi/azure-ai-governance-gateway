@@ -1,5 +1,5 @@
 locals {
-  governance_api_image = "acraigov0d60fe3d.azurecr.io/governance-api@sha256:c38c5da56d0572f1c26e16a2aace0b0a27594ab1dd747cb42bfaea26b8a041ff"
+  governance_api_image = "acraigov0d60fe3d.azurecr.io/governance-api@sha256:c46bc4f2e369ff58a8d866d261707e7c253915696cd0c0212cddd11ab7a8d884"
 }
 
 resource "azurerm_user_assigned_identity" "governance_api" {

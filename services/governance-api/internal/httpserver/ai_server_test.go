@@ -234,3 +234,75 @@ func TestInvokeAIDenyReturns403WithoutProvider(
 		t.Fatal("response must be absent for deny")
 	}
 }
+
+func TestInvokeAITrustedCallerOverridesRequestBody(
+	t *testing.T,
+) {
+	server := newAIServer()
+
+	payload := map[string]any{
+		"caller_subject":      "spoofed-attacker@example.com",
+		"data_classification": "internal",
+		"requested_model":     "fast-general",
+		"prompt":              "trusted caller test",
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/ai/invoke",
+		bytes.NewReader(body),
+	)
+
+	request.Header.Set(
+		"Content-Type",
+		"application/json",
+	)
+
+	request.Header.Set(
+		trustedCallerSubjectHeader,
+		"oid:trusted-directory-object",
+	)
+
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(
+		recorder,
+		request,
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf(
+			"expected status 200, got %d",
+			recorder.Code,
+		)
+	}
+
+	var result airouter.Result
+
+	if err := json.Unmarshal(
+		recorder.Body.Bytes(),
+		&result,
+	); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if result.Governance.CallerSubject !=
+		"oid:trusted-directory-object" {
+		t.Fatalf(
+			"expected trusted caller subject, got %q",
+			result.Governance.CallerSubject,
+		)
+	}
+
+	if result.Governance.CallerSubject ==
+		"spoofed-attacker@example.com" {
+		t.Fatal(
+			"request body must not override trusted caller identity",
+		)
+	}
+}
