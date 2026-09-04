@@ -18,6 +18,10 @@
         </claim>
       </required-claims>
     </validate-azure-ad-token>
+
+    <authentication-managed-identity
+        resource="${governance_api_client_id}"
+        ignore-error="false" />
   </inbound>
   <backend>
     <base />
