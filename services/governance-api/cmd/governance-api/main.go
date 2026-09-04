@@ -12,6 +12,7 @@ import (
 
 	"governance-api/internal/config"
 	"governance-api/internal/database"
+	"governance-api/internal/governance"
 	"governance-api/internal/httpserver"
 )
 
@@ -33,7 +34,14 @@ func main() {
 	}
 	defer db.Close()
 
-	api := httpserver.New(logger, db)
+	governanceRepository := governance.NewPostgresRepository(db)
+	governanceService := governance.NewService(governanceRepository)
+
+	api := httpserver.New(
+		logger,
+		db,
+		governanceService,
+	)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

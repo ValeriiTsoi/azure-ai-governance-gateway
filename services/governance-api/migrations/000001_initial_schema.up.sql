@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE governance_requests (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id          TEXT NOT NULL UNIQUE,

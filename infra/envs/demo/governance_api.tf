@@ -1,5 +1,5 @@
 locals {
-  governance_api_image = "${azurerm_container_registry.demo.login_server}/governance-api@sha256:bf98a8e8a2c3d36c7cf9e1cebfdc2bc20105ffe75715dad6c1db352562e177c7"
+  governance_api_image = "${azurerm_container_registry.demo.login_server}/governance-api@sha256:1e8821c64a83794c47b27c0f4fbe0395444673bf692422401ae8aecf631c58f4"
 }
 
 resource "azurerm_user_assigned_identity" "governance_api" {
