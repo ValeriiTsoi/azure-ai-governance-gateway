@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"governance-api/internal/airouter"
@@ -192,6 +193,11 @@ func (s *Server) createGovernanceRequest(
 		return
 	}
 
+	input.CallerSubject = trustedCallerSubject(
+		r,
+		input.CallerSubject,
+	)
+
 	result, err := s.governance.CreateRequest(
 		r.Context(),
 		input,
@@ -268,6 +274,11 @@ func (s *Server) invokeAI(
 		)
 		return
 	}
+
+	input.CallerSubject = trustedCallerSubject(
+		r,
+		input.CallerSubject,
+	)
 
 	result, err := s.ai.Invoke(
 		r.Context(),
@@ -411,6 +422,23 @@ func (s *Server) handleGovernanceError(
 			"internal server error",
 		)
 	}
+}
+
+const trustedCallerSubjectHeader = "X-AIGOV-Caller-Subject"
+
+func trustedCallerSubject(
+	r *http.Request,
+	fallback string,
+) string {
+	trusted := strings.TrimSpace(
+		r.Header.Get(trustedCallerSubjectHeader),
+	)
+
+	if trusted != "" {
+		return trusted
+	}
+
+	return fallback
 }
 
 func writeError(
