@@ -66,7 +66,7 @@ func (f *fakeAIService) Invoke(
 			Model:            "mock-fast-general",
 			InputTokens:      10,
 			OutputTokens:     5,
-			EstimatedCostUSD: 0,
+			EstimatedCostUSD: new(float64),
 		}
 	}
 

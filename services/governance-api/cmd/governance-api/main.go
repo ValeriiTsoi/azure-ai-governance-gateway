@@ -40,21 +40,89 @@ func main() {
 	governanceService := governance.NewService(governanceRepository)
 
 	aiRepository := airouter.NewPostgresRepository(db)
-	mockProvider := provider.NewMock()
+
+	aiProviders := map[string]provider.Provider{
+		"mock": provider.NewMock(),
+	}
+
+	aiRoutes := map[string]airouter.Route{
+		"fast-general": {
+			RoutedModel: "mock-fast-general",
+			Provider:    "mock",
+			Reason:      "default local mock route",
+		},
+	}
+
+	switch os.Getenv("AI_PROVIDER") {
+	case "", "mock":
+		logger.Info(
+			"AI provider configured",
+			"provider", "mock",
+		)
+
+	case "azure-openai":
+		endpoint := os.Getenv(
+			"AZURE_OPENAI_ENDPOINT",
+		)
+		deployment := os.Getenv(
+			"AZURE_OPENAI_DEPLOYMENT",
+		)
+		managedIdentityClientID := os.Getenv(
+			"AZURE_CLIENT_ID",
+		)
+
+		if endpoint == "" ||
+			deployment == "" ||
+			managedIdentityClientID == "" {
+			logger.Error(
+				"Azure OpenAI configuration incomplete",
+			)
+			os.Exit(1)
+		}
+
+		azureOpenAIProvider, err :=
+			provider.NewAzureOpenAIManagedIdentity(
+				endpoint,
+				managedIdentityClientID,
+			)
+		if err != nil {
+			logger.Error(
+				"create Azure OpenAI provider",
+				"error", err,
+			)
+			os.Exit(1)
+		}
+
+		aiProviders["azure-openai"] =
+			azureOpenAIProvider
+
+		aiRoutes["fast-general"] =
+			airouter.Route{
+				RoutedModel: deployment,
+				Provider:    "azure-openai",
+				Reason:      "default Azure OpenAI route",
+			}
+
+		logger.Info(
+			"AI provider configured",
+			"provider", "azure-openai",
+			"deployment", deployment,
+		)
+
+	default:
+		logger.Error(
+			"unsupported AI_PROVIDER",
+			"provider",
+			os.Getenv("AI_PROVIDER"),
+		)
+		os.Exit(1)
+	}
 
 	aiService := airouter.NewService(
 		governanceService,
 		aiRepository,
-		map[string]provider.Provider{
-			"mock": mockProvider,
-		},
-		map[string]airouter.Route{
-			"fast-general": {
-				RoutedModel: "mock-fast-general",
-				Provider:    "mock",
-				Reason:      "default Stage 5 mock route",
-			},
-		},
+		aiProviders,
+		aiRoutes,
 	)
 
 	api := httpserver.NewWithAIRouter(

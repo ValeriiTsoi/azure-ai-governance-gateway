@@ -20,11 +20,11 @@ type Route struct {
 }
 
 type Usage struct {
-	Provider         string  `json:"provider"`
-	Model            string  `json:"model"`
-	InputTokens      int64   `json:"input_tokens"`
-	OutputTokens     int64   `json:"output_tokens"`
-	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
+	Provider         string   `json:"provider"`
+	Model            string   `json:"model"`
+	InputTokens      int64    `json:"input_tokens"`
+	OutputTokens     int64    `json:"output_tokens"`
+	EstimatedCostUSD *float64 `json:"estimated_cost_usd"`
 }
 
 type ModelResponse struct {
