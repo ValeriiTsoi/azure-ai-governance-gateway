@@ -73,3 +73,18 @@ output "governance_api_fqdn" {
 output "governance_api_url" {
   value = "https://${azurerm_container_app.governance_api.ingress[0].fqdn}"
 }
+
+output "api_management_name" {
+  description = "Name of the demo Azure API Management service."
+  value       = azurerm_api_management.demo.name
+}
+
+output "api_management_gateway_url" {
+  description = "Gateway URL of the demo Azure API Management service."
+  value       = azurerm_api_management.demo.gateway_url
+}
+
+output "api_management_identity_principal_id" {
+  description = "Principal ID of the API Management system-assigned managed identity."
+  value       = azurerm_api_management.demo.identity[0].principal_id
+}

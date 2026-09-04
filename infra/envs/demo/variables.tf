@@ -21,3 +21,8 @@ variable "budget_notification_email" {
   type        = string
   sensitive   = true
 }
+
+variable "apim_publisher_email" {
+  description = "Publisher email used by the demo Azure API Management service."
+  type        = string
+}
