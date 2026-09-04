@@ -18,7 +18,7 @@ func (healthyDatabase) Ping(context.Context) error {
 
 func TestHealthz(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := New(logger, healthyDatabase{})
+	server := New(logger, healthyDatabase{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -39,7 +39,7 @@ func TestHealthz(t *testing.T) {
 
 func TestReadyz(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := New(logger, healthyDatabase{})
+	server := New(logger, healthyDatabase{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()
