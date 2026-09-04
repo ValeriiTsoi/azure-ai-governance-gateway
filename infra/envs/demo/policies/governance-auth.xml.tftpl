@@ -1,0 +1,35 @@
+<policies>
+  <inbound>
+    <base />
+    <validate-azure-ad-token
+        tenant-id="${tenant_id}"
+        header-name="Authorization"
+        failed-validation-httpcode="401"
+        failed-validation-error-message="Unauthorized. A valid Microsoft Entra access token is required.">
+      <client-application-ids>
+        <application-id>${demo_client_id}</application-id>
+      </client-application-ids>
+      <audiences>
+        <audience>${governance_api_client_id}</audience>
+      </audiences>
+      <required-claims>
+        <claim name="scp" match="any" separator=" ">
+          <value>access_as_user</value>
+        </claim>
+      </required-claims>
+    </validate-azure-ad-token>
+
+    <authentication-managed-identity
+        resource="${governance_api_client_id}"
+        ignore-error="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
