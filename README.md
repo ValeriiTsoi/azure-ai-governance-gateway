@@ -7,7 +7,7 @@ Azure AI Governance Gateway is a reference implementation for governing enterpri
 The project demonstrates how organizations can introduce a centralized governance layer between enterprise applications and AI providers to enforce policy, identity, auditability, model routing, data classification and usage/cost controls.
 
 > **Status:** Active development  
-> **Current milestone:** Stage 3B completed / Stage 3C starting  
+> **Current milestone:** Stage 3C completed — governance workflow running end-to-end in Azure  
 > **Deployment:** Microsoft Azure, Sweden Central
 
 ---
@@ -112,7 +112,7 @@ The Go service is therefore **not intended to replace Azure API Management**.
 | Liveness endpoint | `/healthz` | ✅ |
 | Database readiness endpoint | `/readyz` | ✅ |
 | PostgreSQL connectivity | ACA → PostgreSQL | ✅ |
-| Governance workflow | Go + PostgreSQL | 🚧 |
+| Governance workflow | Go + PostgreSQL | ✅ |
 | Enterprise gateway | Azure API Management | Planned |
 | Enterprise authentication | Microsoft Entra ID | Planned |
 | AI model/provider integration | Azure AI / external providers | Planned |
@@ -619,15 +619,16 @@ The planned observability model includes:
 
 ### Stage 3C — Governance workflow
 
-- [ ] deploy migration to Azure PostgreSQL
-- [ ] `POST /v1/governance/requests`
-- [ ] request validation
-- [ ] governance request persistence
-- [ ] policy evaluation
-- [ ] policy decision persistence
-- [ ] audit trail
-- [ ] `GET /v1/governance/requests/{id}`
-- [ ] integration tests
+- [x] deploy migration to Azure PostgreSQL
+- [x] `POST /v1/governance/requests`
+- [x] request validation
+- [x] governance request persistence
+- [x] policy evaluation
+- [x] policy decision persistence
+- [x] audit trail
+- [x] `GET /v1/governance/requests/{id}`
+- [ ] automated integration tests
+- [x] Azure end-to-end ALLOW / REVIEW / DENY verification
 
 ### Planned enterprise capabilities
 
