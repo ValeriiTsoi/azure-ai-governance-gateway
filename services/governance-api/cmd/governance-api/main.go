@@ -10,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"governance-api/internal/airouter"
 	"governance-api/internal/config"
 	"governance-api/internal/database"
 	"governance-api/internal/governance"
 	"governance-api/internal/httpserver"
+	"governance-api/internal/provider"
 )
 
 func main() {
@@ -37,10 +39,29 @@ func main() {
 	governanceRepository := governance.NewPostgresRepository(db)
 	governanceService := governance.NewService(governanceRepository)
 
-	api := httpserver.New(
+	aiRepository := airouter.NewPostgresRepository(db)
+	mockProvider := provider.NewMock()
+
+	aiService := airouter.NewService(
+		governanceService,
+		aiRepository,
+		map[string]provider.Provider{
+			"mock": mockProvider,
+		},
+		map[string]airouter.Route{
+			"fast-general": {
+				RoutedModel: "mock-fast-general",
+				Provider:    "mock",
+				Reason:      "default Stage 5 mock route",
+			},
+		},
+	)
+
+	api := httpserver.NewWithAIRouter(
 		logger,
 		db,
 		governanceService,
+		aiService,
 	)
 
 	server := &http.Server{

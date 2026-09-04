@@ -9,11 +9,19 @@ import (
 	"net/http"
 	"time"
 
+	"governance-api/internal/airouter"
 	"governance-api/internal/governance"
 )
 
 type DatabasePinger interface {
 	Ping(context.Context) error
+}
+
+type AIService interface {
+	Invoke(
+		context.Context,
+		airouter.InvokeInput,
+	) (airouter.Result, error)
 }
 
 type GovernanceService interface {
@@ -32,6 +40,7 @@ type Server struct {
 	logger     *slog.Logger
 	db         DatabasePinger
 	governance GovernanceService
+	ai         AIService
 	mux        *http.ServeMux
 }
 
@@ -40,10 +49,25 @@ func New(
 	db DatabasePinger,
 	governanceService GovernanceService,
 ) *Server {
+	return NewWithAIRouter(
+		logger,
+		db,
+		governanceService,
+		nil,
+	)
+}
+
+func NewWithAIRouter(
+	logger *slog.Logger,
+	db DatabasePinger,
+	governanceService GovernanceService,
+	aiService AIService,
+) *Server {
 	s := &Server{
 		logger:     logger,
 		db:         db,
 		governance: governanceService,
+		ai:         aiService,
 		mux:        http.NewServeMux(),
 	}
 
@@ -69,6 +93,13 @@ func (s *Server) routes() {
 		"GET /v1/governance/requests/{requestID}",
 		s.getGovernanceRequest,
 	)
+
+	if s.ai != nil {
+		s.mux.HandleFunc(
+			"POST /v1/ai/invoke",
+			s.invokeAI,
+		)
+	}
 }
 
 func (s *Server) healthz(
@@ -201,6 +232,152 @@ func (s *Server) getGovernanceRequest(
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) invokeAI(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	r.Body = http.MaxBytesReader(
+		w,
+		r.Body,
+		1<<20,
+	)
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	var input airouter.InvokeInput
+
+	if err := decoder.Decode(&input); err != nil {
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"invalid JSON request body",
+		)
+		return
+	}
+
+	var extra any
+
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"request body must contain exactly one JSON object",
+		)
+		return
+	}
+
+	result, err := s.ai.Invoke(
+		r.Context(),
+		input,
+	)
+	if err != nil {
+		s.handleAIError(w, err)
+		return
+	}
+
+	s.logger.Info(
+		"AI invocation evaluated",
+		"request_id", result.Governance.RequestID,
+		"classification", result.Governance.DataClassification,
+		"decision", result.Governance.Policy.Decision,
+		"provider_called", result.ProviderCalled,
+	)
+
+	switch result.Governance.Policy.Decision {
+	case "allow":
+		writeJSON(
+			w,
+			http.StatusOK,
+			result,
+		)
+
+	case "review":
+		writeJSON(
+			w,
+			http.StatusAccepted,
+			result,
+		)
+
+	case "deny":
+		writeJSON(
+			w,
+			http.StatusForbidden,
+			result,
+		)
+
+	default:
+		s.logger.Error(
+			"unexpected governance decision",
+			"request_id", result.Governance.RequestID,
+			"decision", result.Governance.Policy.Decision,
+		)
+
+		writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal server error",
+		)
+	}
+}
+
+func (s *Server) handleAIError(
+	w http.ResponseWriter,
+	err error,
+) {
+	switch {
+	case errors.Is(err, governance.ErrInvalidInput):
+		writeError(
+			w,
+			http.StatusBadRequest,
+			err.Error(),
+		)
+
+	case errors.Is(err, airouter.ErrUnsupportedModel):
+		writeError(
+			w,
+			http.StatusBadRequest,
+			err.Error(),
+		)
+
+	case errors.Is(err, airouter.ErrProviderNotConfigured):
+		s.logger.Error(
+			"AI provider is not configured",
+			"error", err,
+		)
+
+		writeError(
+			w,
+			http.StatusServiceUnavailable,
+			"AI provider unavailable",
+		)
+
+	case errors.Is(err, airouter.ErrProviderInvocation):
+		s.logger.Error(
+			"AI provider invocation failed",
+			"error", err,
+		)
+
+		writeError(
+			w,
+			http.StatusBadGateway,
+			"AI provider invocation failed",
+		)
+
+	default:
+		s.logger.Error(
+			"AI invocation failed",
+			"error", err,
+		)
+
+		writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal server error",
+		)
+	}
 }
 
 func (s *Server) handleGovernanceError(
