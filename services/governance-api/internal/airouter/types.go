@@ -19,13 +19,22 @@ type Route struct {
 	Reason         string `json:"reason,omitempty"`
 }
 
+type PricingSnapshot struct {
+	Source                   string  `json:"source"`
+	EffectiveStartDate       string  `json:"effective_start_date,omitempty"`
+	InputPerMillionUSD       float64 `json:"input_per_million_usd"`
+	CachedInputPerMillionUSD float64 `json:"cached_input_per_million_usd"`
+	OutputPerMillionUSD      float64 `json:"output_per_million_usd"`
+}
+
 type Usage struct {
-	Provider          string   `json:"provider"`
-	Model             string   `json:"model"`
-	InputTokens       int64    `json:"input_tokens"`
-	CachedInputTokens int64    `json:"cached_input_tokens"`
-	OutputTokens      int64    `json:"output_tokens"`
-	EstimatedCostUSD  *float64 `json:"estimated_cost_usd"`
+	Provider          string           `json:"provider"`
+	Model             string           `json:"model"`
+	InputTokens       int64            `json:"input_tokens"`
+	CachedInputTokens int64            `json:"cached_input_tokens"`
+	OutputTokens      int64            `json:"output_tokens"`
+	EstimatedCostUSD  *float64         `json:"estimated_cost_usd"`
+	Pricing           *PricingSnapshot `json:"pricing,omitempty"`
 }
 
 type ModelResponse struct {

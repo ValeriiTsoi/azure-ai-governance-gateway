@@ -3,6 +3,7 @@ package airouter
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -76,6 +77,45 @@ func (r *PostgresRepository) RecordInvocation(
 		)
 	}
 
+	var (
+		pricingSource         *string
+		pricingEffectiveStart *time.Time
+		inputPrice            *float64
+		cachedInputPrice      *float64
+		outputPrice           *float64
+	)
+
+	if usage.Pricing != nil {
+		if usage.Pricing.Source != "" {
+			value := usage.Pricing.Source
+			pricingSource = &value
+		}
+
+		if usage.Pricing.EffectiveStartDate != "" {
+			value, err := time.Parse(
+				time.RFC3339,
+				usage.Pricing.EffectiveStartDate,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"parse pricing effective start date: %w",
+					err,
+				)
+			}
+
+			pricingEffectiveStart = &value
+		}
+
+		value := usage.Pricing.InputPerMillionUSD
+		inputPrice = &value
+
+		value = usage.Pricing.CachedInputPerMillionUSD
+		cachedInputPrice = &value
+
+		value = usage.Pricing.OutputPerMillionUSD
+		outputPrice = &value
+	}
+
 	usageResult, err := tx.Exec(
 		ctx,
 		`
@@ -84,8 +124,14 @@ func (r *PostgresRepository) RecordInvocation(
 			provider,
 			model,
 			input_tokens,
+			cached_input_tokens,
 			output_tokens,
-			estimated_cost_usd
+			estimated_cost_usd,
+			pricing_source,
+			pricing_effective_start_date,
+			input_price_per_million_usd,
+			cached_input_price_per_million_usd,
+			output_price_per_million_usd
 		)
 		SELECT
 			id,
@@ -93,7 +139,13 @@ func (r *PostgresRepository) RecordInvocation(
 			$3,
 			$4,
 			$5,
-			$6
+			$6,
+			$7,
+			$8,
+			$9,
+			$10,
+			$11,
+			$12
 		FROM governance_requests
 		WHERE request_id = $1
 		`,
@@ -101,8 +153,14 @@ func (r *PostgresRepository) RecordInvocation(
 		usage.Provider,
 		usage.Model,
 		usage.InputTokens,
+		usage.CachedInputTokens,
 		usage.OutputTokens,
 		usage.EstimatedCostUSD,
+		pricingSource,
+		pricingEffectiveStart,
+		inputPrice,
+		cachedInputPrice,
+		outputPrice,
 	)
 	if err != nil {
 		return fmt.Errorf(

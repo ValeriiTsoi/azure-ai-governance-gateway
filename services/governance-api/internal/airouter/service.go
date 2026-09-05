@@ -193,9 +193,19 @@ func (s *Service) Invoke(
 	}
 
 	var estimatedCostUSD *float64
+	var pricingSnapshot *PricingSnapshot
+
 	if costEstimate.Known {
 		value := costEstimate.TotalCostUSD
 		estimatedCostUSD = &value
+
+		pricingSnapshot = &PricingSnapshot{
+			Source:                   costEstimate.Rate.Source,
+			EffectiveStartDate:       costEstimate.Rate.EffectiveStartDate,
+			InputPerMillionUSD:       costEstimate.Rate.InputPerMillionUSD,
+			CachedInputPerMillionUSD: costEstimate.Rate.CachedInputPerMillionUSD,
+			OutputPerMillionUSD:      costEstimate.Rate.OutputPerMillionUSD,
+		}
 	}
 
 	usage := Usage{
@@ -206,6 +216,7 @@ func (s *Service) Invoke(
 			Usage.CachedInputTokens,
 		OutputTokens:     providerResponse.Usage.OutputTokens,
 		EstimatedCostUSD: estimatedCostUSD,
+		Pricing:          pricingSnapshot,
 	}
 
 	if err := s.repository.RecordInvocation(

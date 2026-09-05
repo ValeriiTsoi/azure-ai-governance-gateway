@@ -370,3 +370,51 @@ func TestInvokeAllowCalculatesCostWithFinOps(
 		)
 	}
 }
+
+func TestInvokeAllowReturnsPricingSnapshot(
+	t *testing.T,
+) {
+	service, _, _ := newTestService("allow")
+
+	result, err := service.Invoke(
+		context.Background(),
+		InvokeInput{
+			CallerSubject:      "pricing-audit@example.com",
+			DataClassification: "internal",
+			RequestedModel:     "fast-general",
+			Prompt:             "pricing audit test",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Usage == nil {
+		t.Fatal("expected usage")
+	}
+
+	if result.Usage.Pricing == nil {
+		t.Fatal("expected pricing snapshot")
+	}
+
+	if result.Usage.Pricing.InputPerMillionUSD != 2 {
+		t.Fatalf(
+			"unexpected input price: %f",
+			result.Usage.Pricing.InputPerMillionUSD,
+		)
+	}
+
+	if result.Usage.Pricing.CachedInputPerMillionUSD != 0.2 {
+		t.Fatalf(
+			"unexpected cached input price: %f",
+			result.Usage.Pricing.CachedInputPerMillionUSD,
+		)
+	}
+
+	if result.Usage.Pricing.OutputPerMillionUSD != 10 {
+		t.Fatalf(
+			"unexpected output price: %f",
+			result.Usage.Pricing.OutputPerMillionUSD,
+		)
+	}
+}
