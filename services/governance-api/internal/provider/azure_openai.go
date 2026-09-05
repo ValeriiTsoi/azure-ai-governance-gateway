@@ -3,13 +3,15 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/azure"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
 )
@@ -71,17 +73,53 @@ func NewAzureOpenAI(
 		)
 	}
 
+	authenticate := option.WithMiddleware(
+		func(
+			req *http.Request,
+			next option.MiddlewareNext,
+		) (*http.Response, error) {
+			accessToken, err := credential.GetToken(
+				req.Context(),
+				policy.TokenRequestOptions{
+					Scopes: []string{
+						azureOpenAIScope,
+					},
+				},
+			)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"get Azure OpenAI access token: %w",
+					err,
+				)
+			}
+
+			authenticatedRequest :=
+				req.Clone(req.Context())
+
+			authenticatedRequest.Header =
+				req.Header.Clone()
+
+			authenticatedRequest.Header.Set(
+				"Authorization",
+				"Bearer "+accessToken.Token,
+			)
+
+			return next(authenticatedRequest)
+		},
+	)
+
 	client := openai.NewClient(
+		// Explicitly clear any accidental OPENAI_API_KEY
+		// inherited from the runtime environment.
+		option.WithAPIKey(""),
+
 		option.WithBaseURL(
 			strings.TrimRight(endpoint, "/")+
 				"/openai/v1/",
 		),
-		azure.WithTokenCredential(
-			credential,
-			azure.WithTokenCredentialScopes(
-				[]string{azureOpenAIScope},
-			),
-		),
+
+		authenticate,
+
 		option.WithMaxRetries(2),
 		option.WithRequestTimeout(60*time.Second),
 	)

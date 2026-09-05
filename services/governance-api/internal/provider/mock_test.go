@@ -46,9 +46,10 @@ func TestMockInvokeReturnsDeterministicUsage(
 		)
 	}
 
-	if result.Usage.EstimatedCostUSD != 0 {
+	if result.Usage.EstimatedCostUSD == nil ||
+		*result.Usage.EstimatedCostUSD != 0 {
 		t.Fatalf(
-			"expected zero mock cost, got %f",
+			"expected zero mock cost, got %v",
 			result.Usage.EstimatedCostUSD,
 		)
 	}
