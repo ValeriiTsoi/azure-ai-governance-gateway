@@ -13,6 +13,7 @@ import (
 	"governance-api/internal/airouter"
 	"governance-api/internal/config"
 	"governance-api/internal/database"
+	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/httpserver"
 	"governance-api/internal/provider"
@@ -51,6 +52,35 @@ func main() {
 			Provider:    "mock",
 			Reason:      "default local mock route",
 		},
+	}
+
+	pricingCatalog, err := finops.NewStaticCatalog(
+		[]finops.Rate{
+			{
+				Provider:            "mock",
+				Model:               "mock-fast-general",
+				InputPerMillionUSD:  0,
+				OutputPerMillionUSD: 0,
+			},
+		},
+	)
+	if err != nil {
+		logger.Error(
+			"FinOps pricing catalog initialization failed",
+			"error", err,
+		)
+		os.Exit(1)
+	}
+
+	costCalculator, err := finops.NewCalculator(
+		pricingCatalog,
+	)
+	if err != nil {
+		logger.Error(
+			"FinOps cost calculator initialization failed",
+			"error", err,
+		)
+		os.Exit(1)
 	}
 
 	switch os.Getenv("AI_PROVIDER") {
@@ -121,6 +151,7 @@ func main() {
 	aiService := airouter.NewService(
 		governanceService,
 		aiRepository,
+		costCalculator,
 		aiProviders,
 		aiRoutes,
 	)

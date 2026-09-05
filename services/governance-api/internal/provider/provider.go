@@ -8,9 +8,8 @@ type InvokeRequest struct {
 }
 
 type Usage struct {
-	InputTokens      int64
-	OutputTokens     int64
-	EstimatedCostUSD *float64
+	InputTokens  int64
+	OutputTokens int64
 }
 
 type InvokeResponse struct {

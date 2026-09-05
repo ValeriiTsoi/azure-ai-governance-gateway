@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"strings"
 
+	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/provider"
 )
 
 var (
-	ErrUnsupportedModel      = errors.New("unsupported requested model")
-	ErrProviderNotConfigured = errors.New("model provider is not configured")
-	ErrProviderInvocation    = errors.New("model provider invocation failed")
+	ErrUnsupportedModel           = errors.New("unsupported requested model")
+	ErrProviderNotConfigured      = errors.New("model provider is not configured")
+	ErrProviderInvocation         = errors.New("model provider invocation failed")
+	ErrCostEstimatorNotConfigured = errors.New("FinOps cost estimator is not configured")
+	ErrCostEstimation             = errors.New("AI invocation cost estimation failed")
 )
 
 type GovernanceService interface {
@@ -32,16 +35,26 @@ type Repository interface {
 	) error
 }
 
+type CostEstimator interface {
+	Estimate(
+		provider string,
+		model string,
+		usage finops.Usage,
+	) (finops.CostEstimate, error)
+}
+
 type Service struct {
-	governance GovernanceService
-	repository Repository
-	providers  map[string]provider.Provider
-	routes     map[string]Route
+	governance    GovernanceService
+	repository    Repository
+	costEstimator CostEstimator
+	providers     map[string]provider.Provider
+	routes        map[string]Route
 }
 
 func NewService(
 	governanceService GovernanceService,
 	repository Repository,
+	costEstimator CostEstimator,
 	providers map[string]provider.Provider,
 	routes map[string]Route,
 ) *Service {
@@ -64,10 +77,11 @@ func NewService(
 	}
 
 	return &Service{
-		governance: governanceService,
-		repository: repository,
-		providers:  providerRegistry,
-		routes:     routeRegistry,
+		governance:    governanceService,
+		repository:    repository,
+		costEstimator: costEstimator,
+		providers:     providerRegistry,
+		routes:        routeRegistry,
 	}
 }
 
@@ -149,9 +163,37 @@ func (s *Service) Invoke(
 		)
 	}
 
+	result.ProviderCalled = true
+
 	model := providerResponse.Model
 	if strings.TrimSpace(model) == "" {
 		model = route.RoutedModel
+	}
+
+	if s.costEstimator == nil {
+		return result, ErrCostEstimatorNotConfigured
+	}
+
+	costEstimate, err := s.costEstimator.Estimate(
+		route.Provider,
+		model,
+		finops.Usage{
+			InputTokens:  providerResponse.Usage.InputTokens,
+			OutputTokens: providerResponse.Usage.OutputTokens,
+		},
+	)
+	if err != nil {
+		return result, fmt.Errorf(
+			"%w: %v",
+			ErrCostEstimation,
+			err,
+		)
+	}
+
+	var estimatedCostUSD *float64
+	if costEstimate.Known {
+		value := costEstimate.TotalCostUSD
+		estimatedCostUSD = &value
 	}
 
 	usage := Usage{
@@ -159,7 +201,7 @@ func (s *Service) Invoke(
 		Model:            model,
 		InputTokens:      providerResponse.Usage.InputTokens,
 		OutputTokens:     providerResponse.Usage.OutputTokens,
-		EstimatedCostUSD: providerResponse.Usage.EstimatedCostUSD,
+		EstimatedCostUSD: estimatedCostUSD,
 	}
 
 	if err := s.repository.RecordInvocation(
@@ -174,7 +216,6 @@ func (s *Service) Invoke(
 		)
 	}
 
-	result.ProviderCalled = true
 	result.Route = &route
 	result.Response = &ModelResponse{
 		Provider: route.Provider,

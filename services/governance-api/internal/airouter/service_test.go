@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/provider"
 )
@@ -70,11 +71,33 @@ func (f *fakeProvider) Invoke(
 		Content: "test response",
 		Model:   request.Model,
 		Usage: provider.Usage{
-			InputTokens:      10,
-			OutputTokens:     5,
-			EstimatedCostUSD: new(float64),
+			InputTokens:  10,
+			OutputTokens: 5,
 		},
 	}, nil
+}
+
+func newTestCostCalculator() *finops.Calculator {
+	catalog, err := finops.NewStaticCatalog(
+		[]finops.Rate{
+			{
+				Provider:            "mock",
+				Model:               "mock-fast-general",
+				InputPerMillionUSD:  2,
+				OutputPerMillionUSD: 10,
+			},
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	calculator, err := finops.NewCalculator(catalog)
+	if err != nil {
+		panic(err)
+	}
+
+	return calculator
 }
 
 func newTestService(
@@ -88,6 +111,7 @@ func newTestService(
 			decision: decision,
 		},
 		repository,
+		newTestCostCalculator(),
 		map[string]provider.Provider{
 			"mock": modelProvider,
 		},
@@ -284,6 +308,59 @@ func TestInvokeRejectsUnsupportedModel(
 		t.Fatalf(
 			"expected repository records=0, got %d",
 			repository.records,
+		)
+	}
+}
+
+func TestInvokeAllowCalculatesCostWithFinOps(
+	t *testing.T,
+) {
+	service, _, _ := newTestService("allow")
+
+	result, err := service.Invoke(
+		context.Background(),
+		InvokeInput{
+			CallerSubject:      "finops-test@example.com",
+			DataClassification: "internal",
+			RequestedModel:     "fast-general",
+			Prompt:             "hello model",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Usage == nil {
+		t.Fatal("expected usage")
+	}
+
+	if result.Usage.EstimatedCostUSD == nil {
+		t.Fatal("expected known FinOps cost")
+	}
+
+	// fakeProvider:
+	// input  = 10 tokens
+	// output = 5 tokens
+	//
+	// pricing:
+	// input  = $2 / 1M
+	// output = $10 / 1M
+	//
+	// 10/1M*2 + 5/1M*10 = $0.00007
+	const expected = 0.00007
+	const tolerance = 0.000000000001
+
+	actual := *result.Usage.EstimatedCostUSD
+
+	difference := actual - expected
+	if difference < 0 {
+		difference = -difference
+	}
+
+	if difference > tolerance {
+		t.Fatalf(
+			"unexpected estimated cost: %.12f",
+			actual,
 		)
 	}
 }
