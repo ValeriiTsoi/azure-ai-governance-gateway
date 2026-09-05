@@ -1,6 +1,9 @@
 package airouter
 
-import "governance-api/internal/governance"
+import (
+	"governance-api/internal/budget"
+	"governance-api/internal/governance"
+)
 
 type InvokeInput struct {
 	CallerSubject      string         `json:"caller_subject"`
@@ -45,6 +48,7 @@ type ModelResponse struct {
 
 type Result struct {
 	Governance     governance.Request `json:"governance"`
+	Budget         *budget.Decision   `json:"budget,omitempty"`
 	ProviderCalled bool               `json:"provider_called"`
 	Route          *Route             `json:"route,omitempty"`
 	Response       *ModelResponse     `json:"response,omitempty"`

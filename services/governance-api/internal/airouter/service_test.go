@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"governance-api/internal/budget"
 	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/provider"
@@ -51,6 +52,31 @@ func (f *fakeRepository) RecordInvocation(
 	f.usage = usage
 
 	return nil
+}
+
+type fakeBudgetService struct {
+	decision string
+	calls    int
+}
+
+func (s *fakeBudgetService) Evaluate(
+	_ context.Context,
+	input budget.EvaluateInput,
+) (budget.Decision, error) {
+	s.calls++
+
+	decision := s.decision
+	if decision == "" {
+		decision = "allow"
+	}
+
+	return budget.Decision{
+		PolicyName: budget.PolicyName,
+		Decision:   decision,
+		Reason:     "test budget decision",
+		CostCenter: input.CostCenter,
+		Currency:   "USD",
+	}, nil
 }
 
 type fakeProvider struct {
@@ -112,6 +138,7 @@ func newTestService(
 		&fakeGovernanceService{
 			decision: decision,
 		},
+		&fakeBudgetService{decision: "allow"},
 		repository,
 		newTestCostCalculator(),
 		map[string]provider.Provider{
@@ -415,6 +442,264 @@ func TestInvokeAllowReturnsPricingSnapshot(
 		t.Fatalf(
 			"unexpected output price: %f",
 			result.Usage.Pricing.OutputPerMillionUSD,
+		)
+	}
+}
+
+func newBudgetGuardrailTestService(
+	governanceDecision string,
+	budgetDecision string,
+) (
+	*Service,
+	*fakeBudgetService,
+	*fakeProvider,
+	*fakeRepository,
+) {
+	modelProvider := &fakeProvider{}
+	repository := &fakeRepository{}
+	budgetService := &fakeBudgetService{
+		decision: budgetDecision,
+	}
+
+	service := NewService(
+		&fakeGovernanceService{
+			decision: governanceDecision,
+		},
+		budgetService,
+		repository,
+		newTestCostCalculator(),
+		map[string]provider.Provider{
+			"mock": modelProvider,
+		},
+		map[string]Route{
+			"fast-general": {
+				RoutedModel: "mock-fast-general",
+				Provider:    "mock",
+				Reason:      "budget guardrail test route",
+			},
+		},
+	)
+
+	return service, budgetService, modelProvider, repository
+}
+
+func budgetGuardrailInvokeInput() InvokeInput {
+	return InvokeInput{
+		CallerSubject:      "budget-test@example.com",
+		CostCenter:         "BUDGET-TEST",
+		UseCase:            "budget-guardrail-test",
+		DataClassification: "internal",
+		RequestedModel:     "fast-general",
+		Prompt:             "synthetic budget guardrail test",
+	}
+}
+
+func TestBudgetGuardrailGovernanceDenyStopsBeforeBudget(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"deny",
+			"allow",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 0 {
+		t.Fatalf(
+			"expected zero budget evaluations, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 0 {
+		t.Fatalf(
+			"expected zero provider calls, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be marked as called")
+	}
+
+	if result.Budget != nil {
+		t.Fatal(
+			"budget must not be evaluated after governance deny",
+		)
+	}
+
+	if result.Route != nil ||
+		result.Response != nil ||
+		result.Usage != nil {
+		t.Fatal(
+			"deny must not create route, response or usage",
+		)
+	}
+}
+
+func TestBudgetGuardrailAllowContinuesToProvider(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"allow",
+			"allow",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 1 {
+		t.Fatalf(
+			"expected one budget evaluation, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 1 {
+		t.Fatalf(
+			"expected one provider call, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "allow" {
+		t.Fatalf(
+			"expected budget allow, got %#v",
+			result.Budget,
+		)
+	}
+
+	if !result.ProviderCalled {
+		t.Fatal("expected provider_called=true")
+	}
+
+	if result.Route == nil {
+		t.Fatal("expected model route")
+	}
+
+	if result.Response == nil {
+		t.Fatal("expected model response")
+	}
+
+	if result.Usage == nil {
+		t.Fatal("expected usage")
+	}
+}
+
+func TestBudgetGuardrailReviewStopsBeforeRoutingAndProvider(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"allow",
+			"review",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 1 {
+		t.Fatalf(
+			"expected one budget evaluation, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 0 {
+		t.Fatalf(
+			"expected zero provider calls, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "review" {
+		t.Fatalf(
+			"expected budget review, got %#v",
+			result.Budget,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be called")
+	}
+
+	if result.Route != nil ||
+		result.Response != nil ||
+		result.Usage != nil {
+		t.Fatal(
+			"budget review must stop before route/provider/usage",
+		)
+	}
+}
+
+func TestBudgetGuardrailDenyStopsBeforeRoutingAndProvider(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"allow",
+			"deny",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 1 {
+		t.Fatalf(
+			"expected one budget evaluation, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 0 {
+		t.Fatalf(
+			"expected zero provider calls, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "deny" {
+		t.Fatalf(
+			"expected budget deny, got %#v",
+			result.Budget,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be called")
+	}
+
+	if result.Route != nil ||
+		result.Response != nil ||
+		result.Usage != nil {
+		t.Fatal(
+			"budget deny must stop before route/provider/usage",
 		)
 	}
 }

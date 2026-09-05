@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"governance-api/internal/budget"
 	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/provider"
@@ -17,6 +18,8 @@ var (
 	ErrProviderInvocation         = errors.New("model provider invocation failed")
 	ErrCostEstimatorNotConfigured = errors.New("FinOps cost estimator is not configured")
 	ErrCostEstimation             = errors.New("AI invocation cost estimation failed")
+	ErrBudgetNotConfigured        = errors.New("budget guardrail is not configured")
+	ErrBudgetEvaluation           = errors.New("budget evaluation failed")
 )
 
 type GovernanceService interface {
@@ -43,8 +46,16 @@ type CostEstimator interface {
 	) (finops.CostEstimate, error)
 }
 
+type BudgetService interface {
+	Evaluate(
+		context.Context,
+		budget.EvaluateInput,
+	) (budget.Decision, error)
+}
+
 type Service struct {
 	governance    GovernanceService
+	budget        BudgetService
 	repository    Repository
 	costEstimator CostEstimator
 	providers     map[string]provider.Provider
@@ -53,6 +64,7 @@ type Service struct {
 
 func NewService(
 	governanceService GovernanceService,
+	budgetService BudgetService,
 	repository Repository,
 	costEstimator CostEstimator,
 	providers map[string]provider.Provider,
@@ -78,6 +90,7 @@ func NewService(
 
 	return &Service{
 		governance:    governanceService,
+		budget:        budgetService,
 		repository:    repository,
 		costEstimator: costEstimator,
 		providers:     providerRegistry,
@@ -121,6 +134,41 @@ func (s *Service) Invoke(
 		return Result{}, fmt.Errorf(
 			"unsupported governance decision %q",
 			governanceRequest.Policy.Decision,
+		)
+	}
+
+	if s.budget == nil {
+		return result, ErrBudgetNotConfigured
+	}
+
+	budgetDecision, err := s.budget.Evaluate(
+		ctx,
+		budget.EvaluateInput{
+			RequestID:  governanceRequest.RequestID,
+			CostCenter: governanceRequest.CostCenter,
+		},
+	)
+	if err != nil {
+		return result, fmt.Errorf(
+			"%w: %v",
+			ErrBudgetEvaluation,
+			err,
+		)
+	}
+
+	result.Budget = &budgetDecision
+
+	switch budgetDecision.Decision {
+	case "review", "deny":
+		return result, nil
+
+	case "allow":
+		// Continue to model routing and provider invocation.
+
+	default:
+		return result, fmt.Errorf(
+			"unsupported budget decision %q",
+			budgetDecision.Decision,
 		)
 	}
 

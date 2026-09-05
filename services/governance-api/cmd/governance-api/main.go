@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"governance-api/internal/airouter"
+	"governance-api/internal/budget"
 	"governance-api/internal/config"
 	"governance-api/internal/database"
 	"governance-api/internal/finops"
@@ -39,6 +40,9 @@ func main() {
 
 	governanceRepository := governance.NewPostgresRepository(db)
 	governanceService := governance.NewService(governanceRepository)
+
+	budgetRepository := budget.NewPostgresRepository(db)
+	budgetService := budget.NewService(budgetRepository)
 
 	aiRepository := airouter.NewPostgresRepository(db)
 
@@ -161,6 +165,7 @@ func main() {
 
 	aiService := airouter.NewService(
 		governanceService,
+		budgetService,
 		aiRepository,
 		costCalculator,
 		aiProviders,

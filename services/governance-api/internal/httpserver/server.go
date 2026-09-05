@@ -289,15 +289,30 @@ func (s *Server) invokeAI(
 		return
 	}
 
+	effectiveDecision := result.Governance.Policy.Decision
+	budgetDecision := ""
+
+	if result.Budget != nil {
+		budgetDecision = result.Budget.Decision
+
+		// Governance always has precedence. Budget is evaluated
+		// only after a governance allow decision.
+		if effectiveDecision == "allow" {
+			effectiveDecision = budgetDecision
+		}
+	}
+
 	s.logger.Info(
 		"AI invocation evaluated",
 		"request_id", result.Governance.RequestID,
 		"classification", result.Governance.DataClassification,
-		"decision", result.Governance.Policy.Decision,
+		"governance_decision", result.Governance.Policy.Decision,
+		"budget_decision", budgetDecision,
+		"effective_decision", effectiveDecision,
 		"provider_called", result.ProviderCalled,
 	)
 
-	switch result.Governance.Policy.Decision {
+	switch effectiveDecision {
 	case "allow":
 		writeJSON(
 			w,
