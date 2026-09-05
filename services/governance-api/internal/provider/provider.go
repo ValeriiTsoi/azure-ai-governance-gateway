@@ -8,8 +8,9 @@ type InvokeRequest struct {
 }
 
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
+	InputTokens       int64
+	CachedInputTokens int64
+	OutputTokens      int64
 }
 
 type InvokeResponse struct {

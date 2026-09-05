@@ -32,8 +32,9 @@ func (m *Mock) Invoke(
 		Content: content,
 		Model:   request.Model,
 		Usage: Usage{
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
+			InputTokens:       inputTokens,
+			CachedInputTokens: 0,
+			OutputTokens:      outputTokens,
 		},
 	}, nil
 }

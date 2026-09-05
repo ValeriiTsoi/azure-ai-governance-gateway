@@ -194,7 +194,9 @@ func (p *AzureOpenAI) Invoke(
 		Content: content,
 		Model:   model,
 		Usage: Usage{
-			InputTokens:  response.Usage.InputTokens,
+			InputTokens: response.Usage.InputTokens,
+			CachedInputTokens: response.Usage.
+				InputTokensDetails.CachedTokens,
 			OutputTokens: response.Usage.OutputTokens,
 		},
 	}, nil

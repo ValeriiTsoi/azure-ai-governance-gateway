@@ -5,16 +5,17 @@ import (
 	"testing"
 )
 
-func TestCalculatorEstimatesKnownPrice(
+func TestCalculatorEstimatesCachedAndNonCachedInput(
 	t *testing.T,
 ) {
 	catalog, err := NewStaticCatalog(
 		[]Rate{
 			{
-				Provider:            "test-provider",
-				Model:               "test-model",
-				InputPerMillionUSD:  2,
-				OutputPerMillionUSD: 10,
+				Provider:                 "test-provider",
+				Model:                    "test-model",
+				InputPerMillionUSD:       2,
+				CachedInputPerMillionUSD: 0.2,
+				OutputPerMillionUSD:      10,
 			},
 		},
 	)
@@ -31,8 +32,9 @@ func TestCalculatorEstimatesKnownPrice(
 		"test-provider",
 		"test-model",
 		Usage{
-			InputTokens:  250_000,
-			OutputTokens: 100_000,
+			InputTokens:       250_000,
+			CachedInputTokens: 50_000,
+			OutputTokens:      100_000,
 		},
 	)
 	if err != nil {
@@ -43,9 +45,17 @@ func TestCalculatorEstimatesKnownPrice(
 		t.Fatal("expected known cost estimate")
 	}
 
-	const expectedInput = 0.5
+	if estimate.NonCachedInputTokens != 200_000 {
+		t.Fatalf(
+			"unexpected non-cached input tokens: %d",
+			estimate.NonCachedInputTokens,
+		)
+	}
+
+	const expectedInput = 0.4
+	const expectedCachedInput = 0.01
 	const expectedOutput = 1.0
-	const expectedTotal = 1.5
+	const expectedTotal = 1.41
 	const tolerance = 0.000000001
 
 	if math.Abs(
@@ -54,6 +64,15 @@ func TestCalculatorEstimatesKnownPrice(
 		t.Fatalf(
 			"unexpected input cost: %.9f",
 			estimate.InputCostUSD,
+		)
+	}
+
+	if math.Abs(
+		estimate.CachedInputCostUSD-expectedCachedInput,
+	) > tolerance {
+		t.Fatalf(
+			"unexpected cached input cost: %.9f",
+			estimate.CachedInputCostUSD,
 		)
 	}
 
@@ -93,8 +112,9 @@ func TestCalculatorReturnsUnknownForMissingPrice(
 		"unknown-provider",
 		"unknown-model",
 		Usage{
-			InputTokens:  100,
-			OutputTokens: 50,
+			InputTokens:       100,
+			CachedInputTokens: 20,
+			OutputTokens:      50,
 		},
 	)
 	if err != nil {
@@ -102,9 +122,7 @@ func TestCalculatorReturnsUnknownForMissingPrice(
 	}
 
 	if estimate.Known {
-		t.Fatal(
-			"expected unknown cost estimate",
-		)
+		t.Fatal("expected unknown cost estimate")
 	}
 }
 
@@ -130,8 +148,35 @@ func TestCalculatorRejectsNegativeTokenUsage(
 	)
 
 	if err == nil {
+		t.Fatal("expected negative token usage error")
+	}
+}
+
+func TestCalculatorRejectsCachedTokensAboveInput(
+	t *testing.T,
+) {
+	catalog, err := NewStaticCatalog(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	calculator, err := NewCalculator(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = calculator.Estimate(
+		"test-provider",
+		"test-model",
+		Usage{
+			InputTokens:       10,
+			CachedInputTokens: 11,
+		},
+	)
+
+	if err == nil {
 		t.Fatal(
-			"expected negative token usage error",
+			"expected cached token validation error",
 		)
 	}
 }

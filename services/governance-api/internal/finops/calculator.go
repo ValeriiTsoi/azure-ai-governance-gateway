@@ -8,15 +8,20 @@ import (
 const tokensPerMillion = 1_000_000.0
 
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
+	InputTokens       int64
+	CachedInputTokens int64
+	OutputTokens      int64
 }
 
 type CostEstimate struct {
-	Known         bool
-	InputCostUSD  float64
-	OutputCostUSD float64
-	TotalCostUSD  float64
+	Known                bool
+	NonCachedInputTokens int64
+	CachedInputTokens    int64
+	InputCostUSD         float64
+	CachedInputCostUSD   float64
+	OutputCostUSD        float64
+	TotalCostUSD         float64
+	Rate                 Rate
 }
 
 type Calculator struct {
@@ -49,10 +54,25 @@ func (c *Calculator) Estimate(
 		)
 	}
 
+	if usage.CachedInputTokens < 0 {
+		return CostEstimate{}, fmt.Errorf(
+			"cached input tokens must be non-negative: %d",
+			usage.CachedInputTokens,
+		)
+	}
+
 	if usage.OutputTokens < 0 {
 		return CostEstimate{}, fmt.Errorf(
 			"output tokens must be non-negative: %d",
 			usage.OutputTokens,
+		)
+	}
+
+	if usage.CachedInputTokens > usage.InputTokens {
+		return CostEstimate{}, fmt.Errorf(
+			"cached input tokens %d exceed input tokens %d",
+			usage.CachedInputTokens,
+			usage.InputTokens,
 		)
 	}
 
@@ -67,10 +87,18 @@ func (c *Calculator) Estimate(
 		}, nil
 	}
 
+	nonCachedInputTokens :=
+		usage.InputTokens - usage.CachedInputTokens
+
 	inputCost :=
-		float64(usage.InputTokens) /
+		float64(nonCachedInputTokens) /
 			tokensPerMillion *
 			rate.InputPerMillionUSD
+
+	cachedInputCost :=
+		float64(usage.CachedInputTokens) /
+			tokensPerMillion *
+			rate.CachedInputPerMillionUSD
 
 	outputCost :=
 		float64(usage.OutputTokens) /
@@ -78,9 +106,13 @@ func (c *Calculator) Estimate(
 			rate.OutputPerMillionUSD
 
 	return CostEstimate{
-		Known:         true,
-		InputCostUSD:  inputCost,
-		OutputCostUSD: outputCost,
-		TotalCostUSD:  inputCost + outputCost,
+		Known:                true,
+		NonCachedInputTokens: nonCachedInputTokens,
+		CachedInputTokens:    usage.CachedInputTokens,
+		InputCostUSD:         inputCost,
+		CachedInputCostUSD:   cachedInputCost,
+		OutputCostUSD:        outputCost,
+		TotalCostUSD:         inputCost + cachedInputCost + outputCost,
+		Rate:                 rate,
 	}, nil
 }

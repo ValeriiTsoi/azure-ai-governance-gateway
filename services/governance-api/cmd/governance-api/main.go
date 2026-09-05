@@ -57,10 +57,21 @@ func main() {
 	pricingCatalog, err := finops.NewStaticCatalog(
 		[]finops.Rate{
 			{
-				Provider:            "mock",
-				Model:               "mock-fast-general",
-				InputPerMillionUSD:  0,
-				OutputPerMillionUSD: 0,
+				Provider:                 "mock",
+				Model:                    "mock-fast-general",
+				InputPerMillionUSD:       0,
+				CachedInputPerMillionUSD: 0,
+				OutputPerMillionUSD:      0,
+				Source:                   "local mock",
+			},
+			{
+				Provider:                 "azure-openai",
+				Model:                    "gpt-5-mini",
+				InputPerMillionUSD:       0.25,
+				CachedInputPerMillionUSD: 0.025,
+				OutputPerMillionUSD:      2.00,
+				Source:                   "Azure Retail Prices API",
+				EffectiveStartDate:       "2025-08-01T00:00:00Z",
 			},
 		},
 	)

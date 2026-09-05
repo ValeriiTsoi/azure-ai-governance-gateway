@@ -71,8 +71,9 @@ func (f *fakeProvider) Invoke(
 		Content: "test response",
 		Model:   request.Model,
 		Usage: provider.Usage{
-			InputTokens:  10,
-			OutputTokens: 5,
+			InputTokens:       10,
+			CachedInputTokens: 4,
+			OutputTokens:      5,
 		},
 	}, nil
 }
@@ -81,10 +82,11 @@ func newTestCostCalculator() *finops.Calculator {
 	catalog, err := finops.NewStaticCatalog(
 		[]finops.Rate{
 			{
-				Provider:            "mock",
-				Model:               "mock-fast-general",
-				InputPerMillionUSD:  2,
-				OutputPerMillionUSD: 10,
+				Provider:                 "mock",
+				Model:                    "mock-fast-general",
+				InputPerMillionUSD:       2,
+				CachedInputPerMillionUSD: 0.2,
+				OutputPerMillionUSD:      10,
 			},
 		},
 	)
@@ -347,7 +349,11 @@ func TestInvokeAllowCalculatesCostWithFinOps(
 	// output = $10 / 1M
 	//
 	// 10/1M*2 + 5/1M*10 = $0.00007
-	const expected = 0.00007
+	// 6 non-cached input * $2 / 1M
+	// + 4 cached input * $0.2 / 1M
+	// + 5 output * $10 / 1M
+	// = $0.0000628
+	const expected = 0.0000628
 	const tolerance = 0.000000000001
 
 	actual := *result.Usage.EstimatedCostUSD

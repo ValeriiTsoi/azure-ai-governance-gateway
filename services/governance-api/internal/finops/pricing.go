@@ -7,10 +7,13 @@ import (
 )
 
 type Rate struct {
-	Provider            string
-	Model               string
-	InputPerMillionUSD  float64
-	OutputPerMillionUSD float64
+	Provider                 string
+	Model                    string
+	InputPerMillionUSD       float64
+	CachedInputPerMillionUSD float64
+	OutputPerMillionUSD      float64
+	Source                   string
+	EffectiveStartDate       string
 }
 
 type Catalog interface {
@@ -55,6 +58,14 @@ func NewStaticCatalog(
 			)
 		}
 
+		if rate.CachedInputPerMillionUSD < 0 {
+			return nil, fmt.Errorf(
+				"negative cached input price for %s/%s",
+				provider,
+				model,
+			)
+		}
+
 		if rate.OutputPerMillionUSD < 0 {
 			return nil, fmt.Errorf(
 				"negative output price for %s/%s",
@@ -75,6 +86,9 @@ func NewStaticCatalog(
 
 		rate.Provider = provider
 		rate.Model = model
+		rate.Source = strings.TrimSpace(rate.Source)
+		rate.EffectiveStartDate =
+			strings.TrimSpace(rate.EffectiveStartDate)
 
 		result.rates[key] = rate
 	}

@@ -178,7 +178,9 @@ func (s *Service) Invoke(
 		route.Provider,
 		model,
 		finops.Usage{
-			InputTokens:  providerResponse.Usage.InputTokens,
+			InputTokens: providerResponse.Usage.InputTokens,
+			CachedInputTokens: providerResponse.
+				Usage.CachedInputTokens,
 			OutputTokens: providerResponse.Usage.OutputTokens,
 		},
 	)
@@ -197,9 +199,11 @@ func (s *Service) Invoke(
 	}
 
 	usage := Usage{
-		Provider:         route.Provider,
-		Model:            model,
-		InputTokens:      providerResponse.Usage.InputTokens,
+		Provider:    route.Provider,
+		Model:       model,
+		InputTokens: providerResponse.Usage.InputTokens,
+		CachedInputTokens: providerResponse.
+			Usage.CachedInputTokens,
 		OutputTokens:     providerResponse.Usage.OutputTokens,
 		EstimatedCostUSD: estimatedCostUSD,
 	}
