@@ -34,7 +34,7 @@ func (m *Mock) Invoke(
 		Usage: Usage{
 			InputTokens:      inputTokens,
 			OutputTokens:     outputTokens,
-			EstimatedCostUSD: 0,
+			EstimatedCostUSD: new(float64),
 		},
 	}, nil
 }

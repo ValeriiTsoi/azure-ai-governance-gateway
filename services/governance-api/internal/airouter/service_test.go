@@ -72,7 +72,7 @@ func (f *fakeProvider) Invoke(
 		Usage: provider.Usage{
 			InputTokens:      10,
 			OutputTokens:     5,
-			EstimatedCostUSD: 0,
+			EstimatedCostUSD: new(float64),
 		},
 	}, nil
 }

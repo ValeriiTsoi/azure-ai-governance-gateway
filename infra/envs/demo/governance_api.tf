@@ -1,5 +1,5 @@
 locals {
-  governance_api_image = "acraigov0d60fe3d.azurecr.io/governance-api@sha256:c46bc4f2e369ff58a8d866d261707e7c253915696cd0c0212cddd11ab7a8d884"
+  governance_api_image = "acraigov0d60fe3d.azurecr.io/governance-api@sha256:71a031ab4f7d99024fa650d8a54dbf699a0e53ce1b2d69d255efac6daeb9c079"
 }
 
 resource "azurerm_user_assigned_identity" "governance_api" {
@@ -101,6 +101,26 @@ resource "azurerm_container_app" "governance_api" {
       env {
         name        = "DATABASE_URL"
         secret_name = "database-url"
+      }
+
+      env {
+        name  = "AI_PROVIDER"
+        value = "azure-openai"
+      }
+
+      env {
+        name  = "AZURE_OPENAI_ENDPOINT"
+        value = azurerm_cognitive_account.openai.endpoint
+      }
+
+      env {
+        name  = "AZURE_OPENAI_DEPLOYMENT"
+        value = azurerm_cognitive_deployment.gpt_5_mini.name
+      }
+
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.governance_api.client_id
       }
 
       liveness_probe {
