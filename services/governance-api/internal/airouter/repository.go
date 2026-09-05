@@ -106,14 +106,14 @@ func (r *PostgresRepository) RecordInvocation(
 			pricingEffectiveStart = &value
 		}
 
-		value := usage.Pricing.InputPerMillionUSD
-		inputPrice = &value
+		inputPrice = new(float64)
+		*inputPrice = usage.Pricing.InputPerMillionUSD
 
-		value = usage.Pricing.CachedInputPerMillionUSD
-		cachedInputPrice = &value
+		cachedInputPrice = new(float64)
+		*cachedInputPrice = usage.Pricing.CachedInputPerMillionUSD
 
-		value = usage.Pricing.OutputPerMillionUSD
-		outputPrice = &value
+		outputPrice = new(float64)
+		*outputPrice = usage.Pricing.OutputPerMillionUSD
 	}
 
 	usageResult, err := tx.Exec(
