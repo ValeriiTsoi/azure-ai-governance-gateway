@@ -6,7 +6,7 @@ variable "postgresql_admin_password" {
 }
 
 resource "azurerm_postgresql_flexible_server" "demo" {
-  name                = "psql-aigov-0d60fe3d"
+  name                = local.postgresql_server_name
   resource_group_name = data.azurerm_resource_group.demo.name
   location            = data.azurerm_resource_group.demo.location
 

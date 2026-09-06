@@ -1,37 +1,23 @@
 # Azure AI Governance Gateway — Development Roadmap
 
-This document records the implementation roadmap for the Azure AI Governance Gateway and preserves the major adjustments made while the architecture evolved.
+This roadmap tracks the incremental delivery of the Azure AI Governance Gateway reference implementation.
 
-The roadmap is intentionally incremental.
-
-Each stage should be independently:
+The project follows a simple delivery rule:
 
 ```text
-planned
-  ->
-implemented
-  ->
-tested
-  ->
-reviewed
-  ->
-deployed
-  ->
-verified
-  ->
-cost checked
+plan -> implement -> test -> review -> deploy -> verify -> cost check
 ```
 
-The current priority is to build a credible enterprise governance path without introducing unnecessary Azure cost or premature production complexity.
+The roadmap is intentionally pragmatic. Stages may be reordered when a real-client proof is more valuable than adding another internal capability.
 
 ---
 
-## Roadmap status
+## Current status
 
 | Stage | Scope | Status |
 |---|---|:---:|
 | 1 | Azure / Terraform foundation | ✅ Complete |
-| 2 | Platform foundation | ✅ Complete |
+| 2 | Managed platform foundation | ✅ Complete |
 | 3A | PostgreSQL foundation | ✅ Complete |
 | 3B | Governance API runtime | ✅ Complete |
 | 3C | Governance workflow | ✅ Complete |
@@ -40,13 +26,16 @@ The current priority is to build a credible enterprise governance path without i
 | 5B | Provider-neutral governed AI invocation | ✅ Complete |
 | 5B.5 | Trusted caller identity propagation | ✅ Complete |
 | 5C | Azure OpenAI Managed Identity provider | ✅ Complete |
-| 6A.1 | Provider-neutral FinOps pricing foundation | ✅ Complete |
-| 6A.2 | Cost estimation moved into FinOps layer | ✅ Complete |
-| 6A.3 | Cached-token-aware Azure OpenAI pricing | ✅ Complete |
-| 6A.4 | Pricing audit persistence + migration runner | ✅ Complete |
-| 6A.5 | Deploy FinOps-enabled Governance API | ✅ Complete |
-| 6B | Budget Guardrails | ✅ Complete |
-| 6C | Cost-aware Model Routing | ⬜ Planned |
+| 6A | Provider-neutral FinOps accounting | ✅ Complete |
+| 6B | Runtime budget guardrails | ✅ Complete |
+| 6C | Cost-aware multi-model routing | ⬜ Planned |
+| 7A | OpenAI-compatible facade | ✅ Complete |
+| 7B | IDE/API gateway credential + dual auth | ✅ Complete |
+| 7C | Cursor client integration | ⚠️ Client-plan limitation |
+| 7D | VS Code + Continue Chat | ✅ Complete |
+| 7E | Dedicated agent identities + tools/function calling | ⬜ Planned |
+
+Stage 7 was intentionally pulled forward before Stage 6C to prove the key platform assumption: **real developer tools and API clients can use the same governed execution path without bypassing governance, budget, routing, FinOps or audit controls.**
 
 ---
 
@@ -58,45 +47,32 @@ Establish a reproducible Azure foundation before application development.
 
 ## Delivered
 
-- Azure subscription integration;
-- Terraform provider configuration;
+- Azure provider configuration;
 - Terraform remote state;
-- state resource group;
-- state storage account;
-- state Blob container;
+- state resource group and storage account;
 - demo resource group;
-- Azure provider registration;
-- monthly Azure budget guardrail.
+- required Azure provider registration;
+- monthly Azure Cost Management budget.
 
-## Cost policy
-
-The demo budget is:
-
-```text
-€150 / month
-```
+## Operating rule
 
 New paid Azure resources follow:
 
 ```text
 terraform plan
-      ->
-review
-      ->
-terraform apply
-      ->
-verify
-      ->
-cost check
+  -> review
+  -> terraform apply
+  -> verify
+  -> cost check
 ```
 
 ---
 
-# Stage 2 — Platform foundation
+# Stage 2 — Managed platform foundation
 
 ## Objective
 
-Create the minimum managed Azure platform services required to host and observe the governance control plane.
+Create the minimum Azure services needed to host and observe the governance control plane.
 
 ## Delivered
 
@@ -107,90 +83,49 @@ Create the minimum managed Azure platform services required to host and observe 
 - Azure Container Apps Environment;
 - Consumption workload profile.
 
-## Design principle
-
-Prefer managed, consumption-oriented services where they preserve the architecture while minimizing demo operating cost.
+The demo prefers consumption-oriented managed services where they preserve the architecture and reduce operating cost.
 
 ---
 
-# Stage 3A — PostgreSQL foundation
+# Stage 3 — Governance runtime and data foundation
 
-## Objective
+## Stage 3A — PostgreSQL
 
-Provide durable operational storage for governance decisions and audit evidence.
-
-## Delivered
+Delivered:
 
 - Azure Database for PostgreSQL Flexible Server 16;
-- Burstable `B1ms`;
-- 32 GiB storage;
-- `aigov` database;
-- administrator credential in Key Vault;
-- 7-day backup retention;
-- public endpoint for low-cost demo connectivity;
-- explicit firewall rules rather than broad database access.
+- demo database;
+- Key Vault-backed administrator credential;
+- explicit firewall rules rather than broad `0.0.0.0` access;
+- low-cost demo sizing.
 
-## Production divergence
+Production divergence: use private networking and controlled egress rather than the current public-endpoint demo pattern.
 
-Production should use private networking and controlled egress rather than the current demo public-endpoint pattern.
+## Stage 3B — Governance API runtime
 
----
-
-# Stage 3B — Governance API runtime
-
-## Objective
-
-Create the first custom governance control-plane service.
-
-## Delivered
+Delivered:
 
 - Go service;
-- `net/http`;
-- structured JSON logging;
-- graceful shutdown;
-- HTTP timeouts;
+- structured logging;
+- graceful shutdown and HTTP timeouts;
 - PostgreSQL connection pool;
-- `/healthz`;
-- `/readyz`;
+- `/healthz` and `/readyz`;
 - Docker multi-stage build;
 - non-root runtime;
-- Linux `amd64` image;
-- Azure Container Registry publication;
-- immutable OCI digest deployment;
+- Azure Container Apps deployment;
 - User Assigned Managed Identity;
-- Key Vault integration;
-- Azure Container Apps deployment.
+- immutable OCI digest deployment.
 
----
+## Stage 3C — Governance workflow
 
-# Stage 3C — Governance workflow
-
-## Objective
-
-Implement the first complete governance transaction.
-
-## Delivered
+Delivered:
 
 ```text
 POST /v1/governance/requests
+GET  /v1/governance/requests/{requestID}
 ```
 
-and:
-
-```text
-GET /v1/governance/requests/{requestID}
-```
-
-Initial data model:
-
-```text
-governance_requests
-policy_decisions
-model_routes
-usage_records
-```
-
-Initial policy decisions:
+Initial decisions:
 
 ```text
 allow
@@ -198,7 +133,7 @@ review
 deny
 ```
 
-Initial data classifications:
+Initial classifications:
 
 ```text
 public
@@ -207,7 +142,7 @@ confidential
 restricted
 ```
 
-## Baseline behavior
+Baseline behavior:
 
 ```text
 public       -> allow
@@ -216,41 +151,17 @@ confidential -> review
 restricted   -> deny
 ```
 
-## Audit behavior
+Audit behavior deliberately avoids raw-prompt persistence.
 
-Raw prompts are not persisted.
+## Stage 3D — Network-access state isolation
 
-The governance record stores:
+Azure Container Apps Consumption exposed a large outbound-IP set. Keeping every PostgreSQL firewall rule in the main Terraform state made normal plans unnecessarily slow.
 
-- prompt SHA-256;
-- prompt character count;
-- governance context;
-- policy decision;
-- timestamp.
-
----
-
-# Stage 3D — Terraform network-access state isolation
-
-## Why the plan changed
-
-Azure Container Apps Consumption exposed a large outbound-IP set.
-
-At the time of isolation, PostgreSQL required **161 individual firewall rules**.
-
-Keeping those rules in the main `demo.tfstate` made routine Terraform planning unnecessarily slow.
-
-## Adjustment
-
-Move the firewall resources into:
+The firewall allowlist was therefore isolated into:
 
 ```text
 demo-network-access.tfstate
 ```
-
-## Result
-
-Main demo plans no longer repeatedly process the entire firewall-rule set.
 
 Current state layout:
 
@@ -261,9 +172,7 @@ demo-network-access.tfstate
 demo-identity.tfstate
 ```
 
-## Production note
-
-This is a demo optimization, not the target enterprise networking topology.
+This is a demo optimization, not a target production networking topology.
 
 ---
 
@@ -275,829 +184,380 @@ Move from direct application access to an enterprise gateway and identity bounda
 
 ## Delivered
 
-### Entra identity foundation
+### Microsoft Entra ID
 
-Governance API application:
-
-```text
-identifier URI:
-api://aigov-governance-api-demo
-```
-
-Delegated scope:
-
-```text
-access_as_user
-```
-
-A public demo client application was also created.
+- Governance API application registration;
+- delegated `access_as_user` scope;
+- public demo client for interactive/device-code testing.
 
 ### Azure API Management
 
-Deployment:
+APIM responsibilities:
 
-```text
-APIM Consumption
-```
+- validate Microsoft Entra tokens;
+- validate tenant, audience, client and delegated scope;
+- derive a trusted caller subject from `oid` with `sub` fallback;
+- overwrite internal caller headers;
+- publish governance and governed AI APIs.
 
-Gateway responsibilities:
+### Backend identity boundary
 
-- validate Entra JWT;
-- validate tenant;
-- validate API audience;
-- validate demo client;
-- require `access_as_user`;
-- expose governance API;
-- expose governed AI invocation API.
+APIM authenticates to the Governance API using its Managed Identity.
 
-### Backend authentication
-
-APIM authenticates to the Governance API using APIM Managed Identity.
-
-Container Apps EasyAuth protects the backend.
-
-Expected security path:
-
-```text
-Client
-  ->
-Entra
-  ->
-APIM JWT validation
-  ->
-APIM Managed Identity
-  ->
-Container Apps EasyAuth
-  ->
-Governance API
-```
-
-## Verification
-
-- anonymous direct backend request -> rejected;
-- valid end-user JWT direct to backend -> rejected by backend identity restriction;
-- authenticated APIM request -> accepted;
-- health/readiness exclusions remain available.
+Container Apps EasyAuth protects the backend so the external caller token is not itself sufficient for direct backend access.
 
 ---
 
-# Stage 5B — Provider-neutral governed AI invocation
+# Stage 5 — Governed AI provider execution
 
-## Objective
+## Stage 5B — Provider-neutral invocation
 
-Introduce AI execution without binding governance logic directly to a model vendor.
+Delivered:
 
-## Delivered
+- provider-neutral Go interface;
+- deterministic mock provider;
+- logical route `fast-general`;
+- `POST /v1/ai/invoke`;
+- governance before provider execution;
+- model-route persistence;
+- usage persistence.
 
-Provider interface concept:
+## Stage 5B.5 — Trusted caller identity
 
-```text
-Provider
-  Name()
-  Invoke()
-```
+The original API allowed caller identity to be supplied in client JSON.
 
-Initial deterministic provider:
+That was changed so APIM derives and overwrites the trusted caller identity after token validation. The backend therefore does not trust a user-controlled caller field.
 
-```text
-mock
-```
+## Stage 5C — Azure OpenAI provider
 
-Logical route:
+Delivered:
 
-```text
-fast-general
-```
+- Azure OpenAI account and deployment;
+- `gpt-5-mini` route;
+- local model-key authentication disabled;
+- Governance API Managed Identity with Azure OpenAI RBAC;
+- real Azure inference;
+- provider-authoritative token usage;
+- cached input token capture where reported.
 
-New endpoint:
-
-```text
-POST /v1/ai/invoke
-```
-
-## Execution semantics
-
-```text
-governance
-   |
-   +-- allow  -> route -> provider -> usage persistence
-   |
-   +-- review -> stop
-   |
-   +-- deny   -> stop
-```
-
-This establishes the critical rule:
-
-> Governance must complete before provider invocation.
+The logical client route remained stable while the concrete provider changed from mock to Azure OpenAI.
 
 ---
 
-# Stage 5B.5 — Trusted caller identity propagation
+# Stage 6 — FinOps and governance guardrails
 
-## Why the plan changed
+## Stage 6A — Provider-neutral FinOps accounting
 
-The original API payload included a caller subject supplied by the client.
+### Architecture decision
 
-That value cannot be considered authoritative in an enterprise governance system.
-
-## Adjustment
-
-APIM now derives caller identity from the already validated JWT:
-
-```text
-oid
-```
-
-with fallback:
-
-```text
-sub
-```
-
-and overwrites the internal caller header.
-
-## Result
-
-The backend persists the identity derived from Entra rather than trusting a spoofable JSON field.
-
----
-
-# Stage 5C — Azure OpenAI Managed Identity provider
-
-## Objective
-
-Replace the mock execution path with a real Azure OpenAI provider while preserving the provider-neutral architecture.
-
-## Delivered
-
-Azure OpenAI account:
-
-```text
-aoai-aigov-0d60fe3d
-```
-
-Deployment:
-
-```text
-model:      gpt-5-mini
-version:    2025-08-07
-SKU:        GlobalStandard
-capacity:   10
-```
-
-Authentication:
-
-```text
-Governance API User Assigned Managed Identity
-        +
-Cognitive Services OpenAI User
-```
-
-No Azure OpenAI API key is required.
-
-## Model lifecycle adjustment
-
-The initial deployment attempt targeted:
-
-```text
-gpt-4o-mini / 2024-07-18
-```
-
-Azure reported that version as deprecated.
-
-The deployment target was therefore changed to:
-
-```text
-gpt-5-mini / 2025-08-07
-```
-
-This validated the value of model/provider abstraction: client applications did not need to change.
-
-## Provider behavior
-
-The real provider returns:
-
-- content;
-- model;
-- input tokens;
-- output tokens;
-- later extended cached-input usage.
-
-The provider remains unaware of pricing and budgets.
-
-## Verified
-
-A real governed Azure OpenAI inference completed successfully.
-
-The request was:
-
-```text
-governance -> allow -> route -> Azure OpenAI -> response -> usage audit
-```
-
-The raw prompt was not found in application logs or database audit records.
-
----
-
-# Stage 6 — FinOps & Governance Guardrails
-
-Stage 6 deliberately separates accounting, enforcement and routing.
-
-```mermaid
-flowchart LR
-    P["Provider usage"] --> A["6A Cost Accounting"]
-    A --> B["6B Budget Guardrails"]
-    B --> C["6C Cost-aware Routing"]
-```
-
----
-
-# Stage 6A — Cost Accounting Foundation
-
-## Architecture decision
-
-Financial policy is part of governance.
-
-Responsibility model:
+Pricing is not owned by provider adapters.
 
 ```text
 provider -> reports usage
-finops   -> knows prices
+finops   -> owns prices and cost calculation
 router   -> orchestrates
-database -> persists
 ```
 
-Not:
-
-```text
-Azure OpenAI provider -> knows prices and budgets
-```
-
----
-
-## Stage 6A.1 — Provider-neutral FinOps pricing foundation
+This prevents provider implementation details from becoming the source of mutable financial policy.
 
 ### Delivered
 
-New package:
-
-```text
-internal/finops
-```
-
-Responsibilities:
-
-- normalized provider/model pricing catalog;
-- duplicate validation;
-- negative-price rejection;
+- provider-neutral pricing catalog;
 - token-based cost calculator;
-- explicit unknown-price semantics.
+- cached-input-aware cost calculation;
+- Azure Retail Prices API rate discovery;
+- pricing source/effective-date metadata;
+- immutable pricing snapshots in usage audit records;
+- generic numbered migration runner;
+- migration `000002_usage_pricing_audit`;
+- historical rows preserve unavailable pricing fields as `NULL`.
 
-Unknown price:
+### Core invariant
+
+Unknown pricing is not zero.
 
 ```text
-Known = false
+unknown price -> NULL
 ```
 
-and downstream persistence:
+## Stage 6B — Runtime budget guardrails
+
+### Objective
+
+Evaluate monthly cost-center spend before model routing and provider invocation.
+
+### Delivered
+
+- versioned `budget_policies`;
+- immutable `budget_decisions`;
+- monthly UTC periods;
+- accrued-spend calculation;
+- `allow`, `review`, `deny` outcomes;
+- fail-closed behavior for missing financial policy;
+- unknown-cost usage forces review;
+- review/deny stop before model routing and provider execution;
+- local and Azure end-to-end verification;
+- migration `000003_budget_guardrails`.
+
+### Execution semantics
 
 ```text
-estimated_cost_usd = NULL
+governance allow
+  -> budget allow
+  -> route
+  -> provider
 ```
+
+```text
+governance review/deny
+  -> stop
+```
+
+```text
+budget review/deny
+  -> stop before route/provider
+```
+
+### Current limitation
+
+The MVP evaluates accrued spend but does not reserve the expected cost of in-flight requests. It is therefore not an atomic hard cap under concurrency.
+
+Future production hardening should add a reservation/ledger or another concurrency-safe financial pre-authorization mechanism.
 
 ---
 
-## Stage 6A.2 — Move cost estimation into FinOps
-
-### Adjustment
-
-Cost information was removed from the provider contract.
-
-Provider usage contains only authoritative usage data.
-
-The AI router now calls the FinOps calculator after provider execution.
-
-### Result
-
-The provider interface remains stable when prices change.
-
----
-
-## Stage 6A.3 — Cached-token-aware Azure OpenAI pricing
-
-### Why the plan changed
-
-A simple:
-
-```text
-input_tokens * input_rate
-```
-
-formula is insufficient when Azure bills cached input tokens at a separate rate.
-
-### Azure Retail Prices API discovery
-
-For the current regular `GlobalStandard` `gpt-5-mini` workload:
-
-```text
-Input:        $0.25  / 1M tokens
-Cached input: $0.025 / 1M tokens
-Output:       $2.00  / 1M tokens
-Effective:    2025-08-01T00:00:00Z
-```
-
-Priority Processing rates exist but are not used by the current deployment.
-
-### Formula
-
-```text
-non_cached_input = input_tokens - cached_input_tokens
-
-cost =
-    non_cached_input * input_rate
-  + cached_input      * cached_rate
-  + output            * output_rate
-```
-
-Validation:
-
-```text
-0 <= cached_input_tokens <= input_tokens
-```
-
-### Provider extension
-
-Azure OpenAI usage now maps:
-
-```text
-InputTokensDetails.CachedTokens
-```
-
-into the provider-neutral usage model.
-
----
-
-## Stage 6A.4 — Pricing audit persistence
-
-## Objective
-
-Make each estimated cost explainable later.
-
-## Delivered
-
-`usage_records` now preserves:
-
-```text
-cached_input_tokens
-pricing_source
-pricing_effective_start_date
-input_price_per_million_usd
-cached_input_price_per_million_usd
-output_price_per_million_usd
-```
-
-alongside:
-
-```text
-estimated_cost_usd
-```
-
-## Historical integrity decision
-
-The migration intentionally does **not** default historical values.
-
-Old rows therefore keep:
-
-```text
-NULL
-```
-
-for cached-token/pricing evidence that was not known when those requests ran.
-
-This avoids rewriting history with assumptions.
-
-## Migration
-
-```text
-000002_usage_pricing_audit
-```
-
-was tested:
-
-```text
-UP
-DOWN
-UP
-```
-
-locally before Azure deployment.
-
-The migration was then applied to Azure PostgreSQL and recorded in:
-
-```text
-schema_migrations
-```
-
-## Generic migration runner
-
-A reusable runner was introduced so future migrations do not require hardcoded shell logic.
-
-Behavior:
-
-```text
-discover *.up.sql
-      ->
-sort by version
-      ->
-check schema_migrations
-      ->
-skip already applied
-      OR
-transactionally apply + register
-```
-
-Safety behavior:
-
-```text
-existing core schema
-+
-missing schema_migrations
-=
-STOP
-```
-
-The runner refuses to guess migration history.
-
----
-
-## Stage 6A.5 — Deploy and verify FinOps-enabled Governance API
+# Stage 6C — Cost-aware multi-model routing
 
 ## Status
 
-```text
-COMPLETE
-```
+Planned; intentionally deferred while Stage 7 proves real-client integration.
 
-Stage 6A was deployed and verified end-to-end in Azure.
-
-The FinOps implementation established:
-
-```text
-provider -> authoritative usage
-finops   -> mutable pricing + cost estimate
-database -> immutable pricing snapshot
-```
-
-Azure OpenAI pricing used by the demo:
-
-```text
-Input:        $0.25  / 1M tokens
-Cached input: $0.025 / 1M tokens
-Output:       $2.00  / 1M tokens
-Effective:    2025-08-01T00:00:00Z
-Source:       Azure Retail Prices API
-```
-
-The final 6A verification confirmed:
-
-```text
-authenticated Entra caller
-governance allow
-Azure OpenAI invocation
-provider-authoritative input/cached/output tokens
-estimated cost
-pricing source
-pricing effective date
-selected rates
-PostgreSQL persistence
-raw prompt not persisted
-```
-
-Historical rows retain `NULL` for pricing fields that were not known when those requests executed.
-
-A persistence defect in the pricing-rate snapshot was corrected in:
-
-```text
-514ff24 Fix FinOps pricing audit persistence
-```
-
-The correction was verified with a fresh Azure request and was not applied as a broad historical backfill.
-
----
-
-# Stage 6B — Budget Guardrails
-
-## Objective
-
-Introduce financial policy enforcement before model invocation without adding new paid Azure infrastructure.
-
-## Delivered
-
-Database migration:
-
-```text
-000003_budget_guardrails
-```
-
-introduced:
-
-```text
-budget_policies
-budget_decisions
-```
-
-The runtime budget scope is:
-
-```text
-cost_center + UTC calendar month
-```
-
-`budget_decisions` persists an immutable snapshot of the policy and financial state used for each governance-allowed request.
-
-## Decision model
-
-Budget evaluation executes only after governance `allow` and before model routing/provider invocation.
-
-Current behavior:
-
-```text
-missing cost center       -> review
-missing active policy     -> review
-unknown-cost usage exists -> review
-monthly limit = 0         -> deny
-spent >= monthly limit    -> deny
-utilization >= threshold  -> review
-otherwise                 -> allow
-```
-
-Missing or unknown financial state therefore fails closed.
-
-## Execution flow
-
-```mermaid
-flowchart TD
-    R["AI request"] --> G["Governance evaluation"]
-
-    G -->|"review / deny"| GSTOP["Stop before budget/provider"]
-    G -->|"allow"| B["Budget evaluation"]
-
-    B -->|"allow"| ROUTE["Model route"]
-    B -->|"review"| REVIEW["HTTP 202 / no provider"]
-    B -->|"deny"| DENY["HTTP 403 / no provider"]
-
-    ROUTE --> PROVIDER["AI Provider"]
-    PROVIDER --> USAGE["Provider usage"]
-    USAGE --> FINOPS["FinOps calculation"]
-    FINOPS --> DB["PostgreSQL audit"]
-```
-
-## Non-negotiable invariant
-
-Budget `review` and `deny` stop before model routing and provider invocation.
-
-Verified:
-
-```text
-provider_called = false
-model_routes    = 0
-usage_records   = 0
-```
-
-## Verification
-
-Unit and local integration verification covered:
-
-```text
-allow
-review
-deny
-zero-limit deny
-unknown-cost review
-missing-policy review
-missing-cost-center review
-governance deny before budget
-budget review/deny before routing/provider
-```
-
-Azure migration `000003` was applied and tracked successfully.
-
-Synthetic Azure budget policies were created for:
-
-```text
-BUDGET-ALLOW
-BUDGET-REVIEW
-BUDGET-DENY
-```
-
-Final APIM E2E results:
-
-```text
-BUDGET-ALLOW  -> HTTP 200
-BUDGET-REVIEW -> HTTP 202
-BUDGET-DENY   -> HTTP 403
-```
-
-The final Azure PostgreSQL audit confirmed:
-
-```text
-ALLOW  -> 1 budget decision, 1 model route, 1 usage record
-REVIEW -> 1 budget decision, 0 model routes, 0 usage records
-DENY   -> 1 budget decision, 0 model routes, 0 usage records
-```
-
-The allow record retained:
-
-```text
-provider = azure-openai
-model = gpt-5-mini
-pricing_source = Azure Retail Prices API
-pricing_effective_start_date = 2025-08-01
-```
-
-Raw prompt-content checks returned zero matches.
-
-No new paid Azure resource was introduced by Stage 6B.
-
-## Azure response-timeout hardening
-
-During Azure E2E testing, one allowed request completed provider processing and audit persistence while the client received an empty HTTP `500`.
-
-The leading diagnosis was the Go server's original:
-
-```text
-WriteTimeout = 15 seconds
-```
-
-because the backend logged successful completion with `provider_called=true`, no backend error was recorded, and a shorter synthetic request completed successfully.
-
-The timeout was increased to:
-
-```text
-WriteTimeout = 120 seconds
-```
-
-in:
-
-```text
-e2cab50 Increase AI response write timeout
-```
-
-The post-fix Azure allow request returned `HTTP 200`.
-
-Final immutable image:
-
-```text
-sha256:ccc3b32bfabd42e5f6daeb355152a8fc6e6f3ab63bfaf2a4dd6b363e587f3526
-```
-
-Final verified revision:
-
-```text
-ca-governance-api-demo--0000010
-```
-
-with 100% traffic and healthy status.
-
-## MVP concurrency limitation
-
-The current implementation uses **accrued spend** and does not reserve the expected cost of a request before provider invocation.
-
-Consequences:
-
-- the current request can move total spend above the monthly limit;
-- concurrent requests may observe the same pre-request spend and collectively overshoot;
-- the next evaluation sees the updated accrued balance and can review or deny.
-
-The current implementation is therefore a governance guardrail, not an atomic financial hard cap.
-
-Production hard-cap enforcement should use a reservation/ledger or another concurrency-safe pre-authorization mechanism.
-
----
-
-# Stage 6C — Cost-aware Model Routing
-
-## Objective
-
-Use governance and economics together when selecting a model/provider.
-
-## Target routing inputs
+## Target inputs
 
 ```text
 governance policy
-data classification
-model capability
-provider approval
-latency
-cost
-budget state
-availability
++ data classification
++ model/provider capability
++ budget state
++ pricing/economics
++ availability/health
 ```
 
 ## Target behavior
 
-The client continues to request a logical capability:
+The client should continue to request a logical capability while the gateway chooses an approved concrete model/provider and records an explainable routing reason.
 
-```text
-fast-general
-```
+Examples:
 
-The platform decides the concrete route.
-
-Example:
-
-```text
-fast-general
-      |
-      +-- gpt-5-mini / Azure OpenAI
-      |
-      +-- another approved lower-cost model
-      |
-      +-- controlled internal model
-```
-
-The routing decision must remain explainable.
-
-Persist:
-
-- requested logical model;
-- routed provider;
-- routed model;
-- reason;
-- applicable cost evidence;
-- budget state.
+- prefer the lowest-cost approved route that satisfies the requested capability;
+- avoid a route that violates data classification policy;
+- optionally downgrade within policy when budget pressure increases;
+- preserve model/provider economics and routing rationale in immutable audit evidence.
 
 ---
 
-# Beyond Stage 6 — Capability backlog
+# Stage 7 — Real client integration
 
-The following capabilities remain part of the target architecture but are intentionally deferred until the governance/FinOps path is stable.
+## Why Stage 7 was pulled forward
 
-## Configurable policy administration
+The internal governance path was already proven through API tests. The next highest-value question was whether real developer tools could consume the gateway without receiving direct provider credentials or bypassing governance controls.
 
-- policy configuration rather than hardcoded baseline rules;
-- policy versioning;
-- policy lifecycle;
-- approval workflow.
+The target architecture is:
+
+```text
+IDE / SDK / agent client
+ -> OpenAI-compatible API
+ -> APIM
+ -> trusted client identity
+ -> Governance API
+ -> policy
+ -> budget
+ -> route
+ -> Azure OpenAI
+ -> usage + FinOps + audit
+```
+
+## Stage 7A — OpenAI-compatible facade
+
+### Delivered
+
+```text
+GET  /openai/v1/models
+POST /openai/v1/chat/completions
+```
+
+External model alias:
+
+```text
+aigov-fast-general
+```
+
+Internal logical route:
+
+```text
+fast-general
+```
+
+Concrete provider route:
+
+```text
+azure-openai / gpt-5-mini
+```
+
+The facade converts standard `messages[]` into the existing governed invocation request and returns an OpenAI-like `chat.completion` response.
+
+### Current compatibility boundary
+
+Stage 7A intentionally supports:
+
+- Chat Completions;
+- standard `messages[]` roles used by chat clients;
+- `stream=false`;
+- no native `tools`/function-calling yet.
+
+The adapter does not create a second governance pipeline.
+
+### Verification
+
+Azure E2E verified:
+
+- delegated Entra token -> APIM -> backend -> Azure OpenAI;
+- logical model alias -> `gpt-5-mini` route;
+- provider-authoritative usage;
+- FinOps pricing/cost persistence;
+- raw prompt marker absent from PostgreSQL.
+
+## Stage 7B — IDE/API gateway credential and dual auth
+
+### Objective
+
+Support clients that can send an OpenAI-style API key but cannot perform Microsoft Entra interactive/device-code OAuth themselves.
+
+### Delivered
+
+- separate demo gateway credential stored in Azure Key Vault;
+- APIM Managed Identity granted `Key Vault Secrets User`;
+- APIM Named Value references the Key Vault secret by versionless URI;
+- OpenAI-compatible APIM policy supports two auth modes:
+  - gateway demo credential;
+  - existing delegated Microsoft Entra token;
+- APIM maps the demo credential to trusted governance headers;
+- Azure OpenAI credentials remain hidden from clients.
+
+The secret value is not stored in Terraform source.
+
+## Stage 7C — Cursor
+
+Cursor was configured successfully with:
+
+- custom OpenAI base URL;
+- gateway API key;
+- custom model alias.
+
+The free client plan used for the demo did not permit selecting the custom model in Chat/Agent, so Cursor is not required for the public demo.
+
+This is a **client-plan limitation**, not a gateway compatibility failure.
+
+## Stage 7D — VS Code + Continue
+
+### Delivered
+
+VS Code + Continue was configured as a real IDE client using:
+
+```yaml
+provider: openai
+model: aigov-fast-general
+apiBase: https://<apim>.azure-api.net/openai/v1
+useResponsesApi: false
+```
+
+The gateway credential is loaded from Continue local secrets rather than committed to the project.
+
+Interactive IDE Chat successfully reached the governed Azure path and returned model-generated code/content.
+
+### Demo use
+
+The public demo uses Continue Chat to show a normal developer experience and then queries PostgreSQL audit evidence to demonstrate:
+
+- trusted caller/application context;
+- governance decision;
+- budget decision;
+- routed model/provider;
+- token usage;
+- estimated cost;
+- pricing provenance;
+- absence of raw prompt content.
+
+## Stage 7E — Agent clients and richer OpenAI compatibility
+
+### Planned
+
+- dedicated per-client identities/cost centers such as `continue-demo` and `agent-demo`;
+- Python/OpenAI SDK example;
+- explicit agent-client demo;
+- native streaming (`stream=true` / SSE);
+- tools/function-calling compatibility;
+- optional Responses API facade where useful;
+- richer model metadata;
+- explicit application-to-governance-profile mapping;
+- budget allow/review/deny demonstration by client identity.
+
+---
+
+# Capability backlog
+
+## Policy administration
+
+- move baseline policy data from code into governed configuration;
+- version policy changes;
+- admin workflow and approvals;
+- policy simulation before activation.
 
 ## Governance dashboards
 
-- usage by model;
-- usage by provider;
-- spend by cost center;
-- spend by use case;
-- policy denials;
-- review queue;
-- routing distribution;
-- cost trend;
-- budget utilization.
+- requests by caller/application;
+- policy allow/review/deny distribution;
+- budget decisions;
+- usage and cost by cost center;
+- model/provider routing;
+- pricing source and effective dates.
 
 ## CI/CD
 
-- automated Go tests;
-- Terraform validation;
-- policy/security checks;
-- image build;
-- immutable artifact publication;
-- controlled Terraform deployment;
-- migration execution;
-- post-deployment verification.
+Initial public-repository CI can validate source quality without cloud credentials:
+
+- Go tests;
+- Go vet;
+- Terraform formatting;
+- shell syntax checks.
+
+Future delivery work should add controlled deployment promotion and security gates.
 
 ## Production networking
 
-- private endpoints;
-- private DNS;
+- private endpoints where appropriate;
 - VNet integration;
-- controlled egress;
-- NAT where appropriate;
-- reduced public exposure.
+- controlled/stable egress;
+- private PostgreSQL connectivity;
+- production APIM topology.
 
 ## Resilience
 
-- production PostgreSQL sizing;
-- HA;
-- backup/recovery validation;
-- DR;
-- multi-region architecture if required.
+- multiple provider/model routes;
+- health-aware routing;
+- retry/circuit-breaker strategy;
+- regional failover design;
+- database HA/DR.
 
 ## Enterprise security
 
-- WAF / edge protection;
+- dedicated application identities;
+- gateway credential rotation;
+- private vulnerability reporting;
 - SIEM integration;
-- security monitoring;
-- privileged access governance;
-- stronger workload segmentation.
-
-## AI governance expansion
-
-- provider safety settings;
-- model lifecycle governance;
-- prompt/data controls;
-- content filtering policy;
-- residency-aware routing;
-- enterprise model catalog;
-- RAG governance;
-- agent governance.
+- security event correlation;
+- rate limiting / abuse controls;
+- model safety controls.
 
 ---
 
@@ -1105,56 +565,40 @@ The following capabilities remain part of the target architecture but are intent
 
 ## 1. Governance before invocation
 
-No provider should be called before the request passes applicable governance controls.
+A model should not be called until governance and financial controls permit it.
 
 ## 2. Provider neutrality
 
-Enterprise clients should depend on logical platform capabilities rather than a specific model vendor.
+Clients should depend on logical platform capabilities rather than concrete model vendors.
 
-## 3. Pricing outside providers
+## 3. Pricing belongs outside providers
 
-Provider implementations report usage.
-
-FinOps owns mutable pricing.
+Provider adapters report usage; the FinOps layer owns mutable pricing and cost calculation.
 
 ## 4. Unknown is not zero
 
-Missing pricing evidence is:
-
-```text
-NULL
-```
-
-not:
-
-```text
-0
-```
+Missing financial evidence remains unknown and must not be fabricated.
 
 ## 5. Preserve historical truth
 
-New audit fields should not be backfilled with assumptions.
+New schema fields remain `NULL` for historical rows when the information did not exist at the time.
 
-## 6. Immutable deployment
+## 6. Immutable deployment artifacts
 
-Container releases are pinned by SHA-256 digest.
+Azure runtime deployments use immutable container image digests.
 
-## 7. Terraform review before paid infrastructure changes
+## 7. Review paid infrastructure changes
 
-```text
-plan -> review -> apply -> verify -> cost check
-```
+Terraform plan review precedes apply for paid Azure resources.
 
 ## 8. Demo architecture is not automatically production architecture
 
-Low-cost public connectivity choices must be documented and replaced with controlled/private networking for production.
+Low-cost public networking, small SKUs and single-region choices are explicitly documented as demo trade-offs.
 
-## 9. Design changes remain documented
+## 9. Raw prompt minimization
 
-When Azure capabilities, pricing, model lifecycle or implementation constraints change the plan, the roadmap records both the original direction and the chosen adjustment.
+Audit should retain governance evidence without unnecessarily persisting prompt content.
 
-## 10. Accrued-spend guardrails are not reservations
+## 10. Real clients must reuse the same governance path
 
-A budget check based on already-recorded usage is not an atomic hard-cap mechanism.
-
-If production requires strict financial pre-authorization, use a reservation/ledger or another concurrency-safe mechanism rather than assuming an accrued-spend check prevents all overshoot.
+OpenAI compatibility is an adapter at the edge, not a second bypass pipeline.

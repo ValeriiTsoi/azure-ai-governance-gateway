@@ -1,5 +1,5 @@
 locals {
-  azure_openai_name            = "aoai-aigov-0d60fe3d"
+  azure_openai_name            = "aoai-aigov-${local.unique_suffix}"
   azure_openai_deployment_name = "gpt-5-mini"
   azure_openai_model_name      = "gpt-5-mini"
   azure_openai_model_version   = "2025-08-07"

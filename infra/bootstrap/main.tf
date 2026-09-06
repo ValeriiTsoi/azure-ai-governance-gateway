@@ -4,7 +4,7 @@ locals {
   common_tags = {
     project     = "azure-ai-governance-gateway"
     environment = var.environment
-    purpose     = "sandvik-demo"
+    purpose     = "governance-gateway-demo"
     managed_by  = "terraform"
   }
 

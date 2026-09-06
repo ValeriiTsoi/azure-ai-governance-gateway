@@ -1,27 +1,45 @@
-# macOS
+# macOS / Finder metadata
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
 
 # Environment / secrets
 .env
 .env.*
 !.env.example
+.continue/
 
 # Terraform
 **/.terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfplan.*
 crash.log
 crash.*.log
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
 
+# Local backups / editor leftovers
+*.bak
+*.backup
+*.orig
+*.rej
+*~
+
 # Private keys / certificates
 *.pem
 *.key
 *.p12
 *.pfx
+
+# Build / test outputs
+**/bin/
+*.out
+coverage.out
+coverage.html
 
 # Logs
 *.log
@@ -30,4 +48,3 @@ crash.*.log
 .idea/
 .vscode/
 .cursor/
-/services/governance-api/bin/

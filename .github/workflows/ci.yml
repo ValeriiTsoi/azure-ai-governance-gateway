@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  governance-api:
+    name: Go tests and vet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/governance-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/governance-api/go.mod
+          cache-dependency-path: services/governance-api/go.sum
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  source-hygiene:
+    name: Terraform and shell checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.0
+
+      - name: Terraform formatting
+        run: terraform fmt -check -recursive infra
+
+      - name: Shell syntax
+        shell: bash
+        run: |
+          bash -n scripts/*.sh
+          bash -n services/governance-api/scripts/*.sh
