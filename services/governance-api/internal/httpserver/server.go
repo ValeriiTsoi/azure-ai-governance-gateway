@@ -100,6 +100,16 @@ func (s *Server) routes() {
 			"POST /v1/ai/invoke",
 			s.invokeAI,
 		)
+
+		s.mux.HandleFunc(
+			"GET /v1/models",
+			s.listOpenAIModels,
+		)
+
+		s.mux.HandleFunc(
+			"POST /v1/chat/completions",
+			s.createOpenAIChatCompletion,
+		)
 	}
 }
 
