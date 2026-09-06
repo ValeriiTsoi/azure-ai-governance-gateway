@@ -3,12 +3,12 @@ set -euo pipefail
 
 # Open temporary exact-IP PostgreSQL access for the demo.
 
-RG="rg-aigov-demo"
-SERVER="psql-aigov-0d60fe3d"
-DB="aigov"
-DB_USER="aigovadmin"
-KV="kv-aigov-0d60fe3d"
-PASSWORD_SECRET="postgresql-admin-password"
+RG="${AZURE_RESOURCE_GROUP:-rg-aigov-demo}"
+SERVER="${POSTGRES_SERVER_NAME:-psql-aigov-0d60fe3d}"
+DB="${POSTGRES_DATABASE_NAME:-aigov}"
+DB_USER="${POSTGRES_ADMIN_LOGIN:-aigovadmin}"
+KV="${KEY_VAULT_NAME:-kv-aigov-0d60fe3d}"
+PASSWORD_SECRET="${POSTGRES_PASSWORD_SECRET_NAME:-postgresql-admin-password}"
 STATE_FILE="${TMPDIR:-/tmp}/aigov-demo-db-access.env"
 
 for cmd in az curl docker; do

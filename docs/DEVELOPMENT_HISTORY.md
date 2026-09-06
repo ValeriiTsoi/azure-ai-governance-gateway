@@ -16,45 +16,36 @@ The purpose is to avoid losing the reasoning behind changes as the demo evolves.
 Date:
 
 ```text
-2026-09-05
+2026-09-06
 ```
 
 Branch:
 
 ```text
-stage-6-finops-guardrails
+stage-7-real-clients
 ```
 
-Latest Stage 6 application commits:
+Latest Stage 7 commits:
 
 ```text
-706b0d5 Add monthly AI budget guardrails
-e2cab50 Increase AI response write timeout
+c870301 Add OpenAI-compatible chat completions facade
+1ba514a Add OpenAI-compatible APIM facade
+0b1c218 Pin Stage 7A governance API image
+3f8a5a6 Add Cursor demo credential binding
+9ac90af Add Cursor API key authentication
 ```
 
 Current deployed Governance API image:
 
 ```text
 acraigov0d60fe3d.azurecr.io/governance-api
-@sha256:ccc3b32bfabd42e5f6daeb355152a8fc6e6f3ab63bfaf2a4dd6b363e587f3526
+@sha256:00e94f27599810ca99fdfb90d45055e219b3563214d6e8e6a7bd59b299e7f4f7
 ```
 
 Current active Azure Container Apps revision:
 
 ```text
-ca-governance-api-demo--0000010
-```
-
-Traffic:
-
-```text
-100%
-```
-
-Health:
-
-```text
-Healthy
+ca-governance-api-demo--0000011
 ```
 
 Runtime:
@@ -72,17 +63,27 @@ Database migrations:
 3  budget_guardrails
 ```
 
-Completed:
+Completed since the Stage 6 checkpoint:
 
 ```text
-Stage 6A -> FinOps accounting
-Stage 6B -> Runtime budget guardrails
+Stage 7A -> OpenAI-compatible facade
+Stage 7B -> API-key-style gateway credential + dual auth
+Stage 7D -> VS Code + Continue Chat integration
 ```
 
-Next:
+Current compatibility boundary:
 
 ```text
-Stage 6C -> Cost-aware Model Routing
+Chat Completions
+stream=false
+no native tools/function calling yet
+```
+
+Next implementation work:
+
+```text
+Stage 7E -> dedicated client identities + richer agent/OpenAI compatibility
+Stage 6C -> cost-aware multi-model routing
 ```
 
 ---
@@ -98,13 +99,13 @@ Azure subscription 1
 Subscription ID:
 
 ```text
-74555f26-0688-4004-af97-8f82d11ae45a
+<subscription-id>
 ```
 
 Tenant:
 
 ```text
-b586507e-cdea-4131-a68a-32a6bcd7634f
+<tenant-id>
 ```
 
 Region:
@@ -459,7 +460,7 @@ The architecture moved from direct public API access toward the intended enterpr
 Governance API application/client ID:
 
 ```text
-ecb0e3f3-ad8f-47d1-ae1d-5c8fb60ea1d1
+<governance-api-client-id>
 ```
 
 Identifier URI:
@@ -477,7 +478,7 @@ access_as_user
 Scope UUID:
 
 ```text
-a86d7a21-2cbc-4f23-9514-2c6d6e0ced31
+<access-as-user-scope-id>
 ```
 
 ## Demo client
@@ -485,7 +486,7 @@ a86d7a21-2cbc-4f23-9514-2c6d6e0ced31
 Client ID:
 
 ```text
-69bba583-8047-44c5-b1fb-bc8b36e4c3eb
+<demo-client-id>
 ```
 
 Configured as a public client.
@@ -501,7 +502,7 @@ https://apim-aigov-0d60fe3d.azure-api.net
 APIM identity principal:
 
 ```text
-3d4ba4af-f91f-4db2-b085-2777f5b1bdfc
+<apim-managed-identity-principal-id>
 ```
 
 ## Authentication design
@@ -658,10 +659,10 @@ Governance API UAMI:
 
 ```text
 client ID:
-52b5cb65-6791-4b92-8c61-bc08fcbc2516
+<governance-api-managed-identity-client-id>
 
 principal ID:
-2e8ce19c-34cf-4072-9921-13c0696e5c2d
+<governance-api-managed-identity-principal-id>
 ```
 
 Role:
@@ -1374,6 +1375,123 @@ A production hard-cap design should introduce a reservation/ledger or another co
 
 ---
 
+# Stage 7 — Real client integration
+
+Stage 7 was intentionally pulled forward ahead of Stage 6C to prove that real developer clients can consume the governed platform without bypassing the existing governance pipeline.
+
+## Stage 7A — OpenAI-compatible facade
+
+Added an OpenAI-compatible adapter at APIM/Governance API:
+
+```text
+GET  /openai/v1/models
+POST /openai/v1/chat/completions
+```
+
+External model alias:
+
+```text
+aigov-fast-general
+```
+
+Internal logical route:
+
+```text
+fast-general
+```
+
+Concrete provider route:
+
+```text
+azure-openai / gpt-5-mini
+```
+
+The adapter reuses the existing `airouter.Service.Invoke` execution order rather than introducing a parallel governance path.
+
+Azure end-to-end verification confirmed:
+
+```text
+governance decision = allow
+budget decision     = allow
+routed model        = gpt-5-mini
+provider            = azure-openai
+pricing source      = Azure Retail Prices API
+raw prompt marker   = 0 database matches
+```
+
+The verified provider-authoritative usage for the Stage 7A probe was:
+
+```text
+input tokens  = 48
+output tokens = 166
+```
+
+## Stage 7B — IDE/API gateway credential
+
+A second client authentication mode was added for IDE/API clients that can send an OpenAI-style API key but cannot perform delegated Microsoft Entra interactive authentication.
+
+The design uses:
+
+```text
+Azure Key Vault secret
+  -> versionless APIM Named Value
+  -> APIM policy validation
+  -> trusted caller/cost-center headers
+```
+
+The gateway credential is separate from Azure OpenAI. Azure OpenAI local key authentication remains disabled and the Governance API continues to use Managed Identity.
+
+The existing delegated Microsoft Entra path was preserved as a second authentication branch.
+
+Verification confirmed:
+
+```text
+wrong gateway key -> HTTP 401
+valid gateway key -> HTTP 200
+existing Entra token -> HTTP 200
+```
+
+A Cursor-style non-streaming Chat Completions call returned a real Azure OpenAI response through the gateway.
+
+## Stage 7C — Cursor client attempt
+
+Cursor was configured with the custom OpenAI base URL, gateway credential and `aigov-fast-general` model alias.
+
+The free client plan used for the public demo did not permit selecting a custom model in Chat/Agent. This was treated as a client-plan limitation, not as a gateway failure.
+
+The public demonstration therefore moved to VS Code + Continue instead of purchasing a Cursor subscription solely for testing.
+
+## Stage 7D — VS Code + Continue
+
+Continue was configured as an OpenAI-compatible client with:
+
+```text
+provider = openai
+model = aigov-fast-general
+useResponsesApi = false
+stream = false
+```
+
+The API key is loaded from Continue local secrets and is not committed to the repository.
+
+Interactive Continue Chat successfully invoked the governed endpoint and returned model-generated output in VS Code.
+
+For the public demo, the next audit step is to show the corresponding governance/budget/route/usage record and repeat the raw-prompt marker check.
+
+## Stage 7E — planned
+
+Planned follow-up work includes:
+
+- dedicated per-client identities and cost centers;
+- Python/OpenAI SDK agent example;
+- native streaming/SSE compatibility;
+- tools/function-calling support;
+- optional Responses API facade;
+- richer application-to-governance-profile mapping;
+- client-specific budget allow/review/deny demonstrations.
+
+---
+
 # Security decisions preserved
 
 ## No raw prompt persistence
@@ -1530,38 +1648,35 @@ f69ed83 Add cached-token-aware Azure OpenAI pricing
 e2cab50 Increase AI response write timeout
 ```
 
-Current Stage 6 branch:
+## Stage 7
 
 ```text
-stage-6-finops-guardrails
+c870301 Add OpenAI-compatible chat completions facade
+1ba514a Add OpenAI-compatible APIM facade
+0b1c218 Pin Stage 7A governance API image
+3f8a5a6 Add Cursor demo credential binding
+9ac90af Add Cursor API key authentication
+```
+
+Current Stage 7 branch:
+
+```text
+stage-7-real-clients
 ```
 
 ---
 
 # Next checkpoint
 
-Stage 6A FinOps accounting and Stage 6B runtime budget guardrails are complete and verified in Azure.
+Stage 7A, Stage 7B and the VS Code + Continue Chat client path are implemented and verified.
 
-Next:
-
-```text
-Stage 6C -> Cost-aware Model Routing
-```
-
-Stage 6C should combine:
+Next priorities:
 
 ```text
-governance policy
-+
-data classification
-+
-model/provider capability
-+
-financial policy
-+
-provider/model economics
+Stage 7E -> dedicated client identities + richer agent/OpenAI compatibility
+Stage 6C -> cost-aware multi-model routing
 ```
 
-while preserving explainable routing decisions and immutable financial/routing audit evidence.
+Stage 6C remains important for explainable economics-aware routing. Stage 7E first completes the real-client story by separating IDE/agent identities and adding streaming/tool compatibility where required.
 
 The Stage 6B accrued-spend concurrency limitation remains explicit future hardening work for any production-grade atomic budget-cap implementation.

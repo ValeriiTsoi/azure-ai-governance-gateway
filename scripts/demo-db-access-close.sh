@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Remove temporary demo PostgreSQL access.
 
-RG="rg-aigov-demo"
-SERVER="psql-aigov-0d60fe3d"
+RG="${AZURE_RESOURCE_GROUP:-rg-aigov-demo}"
+SERVER="${POSTGRES_SERVER_NAME:-psql-aigov-0d60fe3d}"
 STATE_FILE="${TMPDIR:-/tmp}/aigov-demo-db-access.env"
 
 unset PGPASSWORD || true

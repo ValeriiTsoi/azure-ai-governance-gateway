@@ -1,5 +1,5 @@
 resource "azurerm_api_management" "demo" {
-  name                = "apim-aigov-0d60fe3d"
+  name                = local.api_management_name
   location            = data.azurerm_resource_group.demo.location
   resource_group_name = data.azurerm_resource_group.demo.name
 
@@ -12,10 +12,5 @@ resource "azurerm_api_management" "demo" {
     type = "SystemAssigned"
   }
 
-  tags = {
-    environment = "demo"
-    managed_by  = "terraform"
-    project     = "azure-ai-governance-gateway"
-    purpose     = "sandvik-demo"
-  }
+  tags = local.common_tags
 }

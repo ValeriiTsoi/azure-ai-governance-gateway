@@ -2,7 +2,7 @@ locals {
   common_tags = {
     project     = "azure-ai-governance-gateway"
     environment = var.environment
-    purpose     = "sandvik-demo"
+    purpose     = "governance-gateway-demo"
     managed_by  = "terraform"
   }
 
@@ -13,7 +13,9 @@ locals {
     8
   )
 
-  key_vault_name = "kv-aigov-${local.unique_suffix}"
+  key_vault_name         = "kv-aigov-${local.unique_suffix}"
+  postgresql_server_name = "psql-aigov-${local.unique_suffix}"
+  api_management_name    = "apim-aigov-${local.unique_suffix}"
 
   # Azure Container Registry names may contain only letters and numbers.
   container_registry_name = "acraigov${local.unique_suffix}"
