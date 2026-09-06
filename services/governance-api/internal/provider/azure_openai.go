@@ -194,13 +194,10 @@ func (p *AzureOpenAI) Invoke(
 		Content: content,
 		Model:   model,
 		Usage: Usage{
-			InputTokens:  response.Usage.InputTokens,
+			InputTokens: response.Usage.InputTokens,
+			CachedInputTokens: response.Usage.
+				InputTokensDetails.CachedTokens,
 			OutputTokens: response.Usage.OutputTokens,
-
-			// Stage 5C records authoritative token usage first.
-			// FinOps pricing will be calculated separately rather
-			// than embedding mutable Azure prices in provider code.
-			EstimatedCostUSD: nil,
 		},
 	}, nil
 }

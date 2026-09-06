@@ -11,9 +11,7 @@ KEY_VAULT="${KEY_VAULT_NAME:-kv-aigov-0d60fe3d}"
 PASSWORD_SECRET="${POSTGRES_PASSWORD_SECRET_NAME:-postgresql-admin-password}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-MIGRATION_FILE="${SERVICE_DIR}/migrations/000001_initial_schema.up.sql"
 
 FIREWALL_RULE="migration-$(date +%Y%m%d%H%M%S)"
 FIREWALL_CREATED=0
@@ -36,11 +34,6 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-if [[ ! -f "${MIGRATION_FILE}" ]]; then
-  echo "ERROR: migration file not found:"
-  echo "${MIGRATION_FILE}"
-  exit 1
-fi
 
 echo "Detecting current public IPv4 address..."
 
@@ -108,67 +101,11 @@ if [[ "${CONNECTED}" != "1" ]]; then
   exit 1
 fi
 
-echo "Creating migration tracking table if necessary..."
+echo "Applying database migrations..."
 
-docker run --rm -i \
-  -e PGPASSWORD \
-  postgres:16-alpine \
-  psql "${PG_CONN}" \
-  -v ON_ERROR_STOP=1 <<'SQL_EOF'
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version     BIGINT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-SQL_EOF
+export PG_CONN
 
-APPLIED="$(
-  docker run --rm \
-    -e PGPASSWORD \
-    postgres:16-alpine \
-    psql "${PG_CONN}" \
-    -Atqc \
-    "SELECT EXISTS (
-       SELECT 1
-       FROM schema_migrations
-       WHERE version = 1
-     );"
-)"
-
-if [[ "${APPLIED}" == "t" ]]; then
-  echo "Migration 000001 is already applied."
-else
-  echo "Applying migration 000001_initial_schema..."
-
-  {
-    echo "BEGIN;"
-    cat "${MIGRATION_FILE}"
-    echo
-    echo "INSERT INTO schema_migrations (version, name)"
-    echo "VALUES (1, 'initial_schema');"
-    echo "COMMIT;"
-  } | docker run --rm -i \
-        -e PGPASSWORD \
-        postgres:16-alpine \
-        psql "${PG_CONN}" \
-        -v ON_ERROR_STOP=1
-
-  echo "Migration 000001 applied successfully."
-fi
-
-echo
-echo "Migration status:"
-
-docker run --rm \
-  -e PGPASSWORD \
-  postgres:16-alpine \
-  psql "${PG_CONN}" \
-  -P pager=off \
-  -c "
-    SELECT version, name, applied_at
-    FROM schema_migrations
-    ORDER BY version;
-  "
+"${SCRIPT_DIR}/run-migrations.sh"
 
 echo
 echo "Governance tables:"

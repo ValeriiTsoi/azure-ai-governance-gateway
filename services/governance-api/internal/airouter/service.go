@@ -6,14 +6,20 @@ import (
 	"fmt"
 	"strings"
 
+	"governance-api/internal/budget"
+	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/provider"
 )
 
 var (
-	ErrUnsupportedModel      = errors.New("unsupported requested model")
-	ErrProviderNotConfigured = errors.New("model provider is not configured")
-	ErrProviderInvocation    = errors.New("model provider invocation failed")
+	ErrUnsupportedModel           = errors.New("unsupported requested model")
+	ErrProviderNotConfigured      = errors.New("model provider is not configured")
+	ErrProviderInvocation         = errors.New("model provider invocation failed")
+	ErrCostEstimatorNotConfigured = errors.New("FinOps cost estimator is not configured")
+	ErrCostEstimation             = errors.New("AI invocation cost estimation failed")
+	ErrBudgetNotConfigured        = errors.New("budget guardrail is not configured")
+	ErrBudgetEvaluation           = errors.New("budget evaluation failed")
 )
 
 type GovernanceService interface {
@@ -32,16 +38,35 @@ type Repository interface {
 	) error
 }
 
+type CostEstimator interface {
+	Estimate(
+		provider string,
+		model string,
+		usage finops.Usage,
+	) (finops.CostEstimate, error)
+}
+
+type BudgetService interface {
+	Evaluate(
+		context.Context,
+		budget.EvaluateInput,
+	) (budget.Decision, error)
+}
+
 type Service struct {
-	governance GovernanceService
-	repository Repository
-	providers  map[string]provider.Provider
-	routes     map[string]Route
+	governance    GovernanceService
+	budget        BudgetService
+	repository    Repository
+	costEstimator CostEstimator
+	providers     map[string]provider.Provider
+	routes        map[string]Route
 }
 
 func NewService(
 	governanceService GovernanceService,
+	budgetService BudgetService,
 	repository Repository,
+	costEstimator CostEstimator,
 	providers map[string]provider.Provider,
 	routes map[string]Route,
 ) *Service {
@@ -64,10 +89,12 @@ func NewService(
 	}
 
 	return &Service{
-		governance: governanceService,
-		repository: repository,
-		providers:  providerRegistry,
-		routes:     routeRegistry,
+		governance:    governanceService,
+		budget:        budgetService,
+		repository:    repository,
+		costEstimator: costEstimator,
+		providers:     providerRegistry,
+		routes:        routeRegistry,
 	}
 }
 
@@ -110,6 +137,41 @@ func (s *Service) Invoke(
 		)
 	}
 
+	if s.budget == nil {
+		return result, ErrBudgetNotConfigured
+	}
+
+	budgetDecision, err := s.budget.Evaluate(
+		ctx,
+		budget.EvaluateInput{
+			RequestID:  governanceRequest.RequestID,
+			CostCenter: governanceRequest.CostCenter,
+		},
+	)
+	if err != nil {
+		return result, fmt.Errorf(
+			"%w: %v",
+			ErrBudgetEvaluation,
+			err,
+		)
+	}
+
+	result.Budget = &budgetDecision
+
+	switch budgetDecision.Decision {
+	case "review", "deny":
+		return result, nil
+
+	case "allow":
+		// Continue to model routing and provider invocation.
+
+	default:
+		return result, fmt.Errorf(
+			"unsupported budget decision %q",
+			budgetDecision.Decision,
+		)
+	}
+
 	requestedModel := strings.TrimSpace(
 		governanceRequest.RequestedModel,
 	)
@@ -149,17 +211,60 @@ func (s *Service) Invoke(
 		)
 	}
 
+	result.ProviderCalled = true
+
 	model := providerResponse.Model
 	if strings.TrimSpace(model) == "" {
 		model = route.RoutedModel
 	}
 
+	if s.costEstimator == nil {
+		return result, ErrCostEstimatorNotConfigured
+	}
+
+	costEstimate, err := s.costEstimator.Estimate(
+		route.Provider,
+		model,
+		finops.Usage{
+			InputTokens: providerResponse.Usage.InputTokens,
+			CachedInputTokens: providerResponse.
+				Usage.CachedInputTokens,
+			OutputTokens: providerResponse.Usage.OutputTokens,
+		},
+	)
+	if err != nil {
+		return result, fmt.Errorf(
+			"%w: %v",
+			ErrCostEstimation,
+			err,
+		)
+	}
+
+	var estimatedCostUSD *float64
+	var pricingSnapshot *PricingSnapshot
+
+	if costEstimate.Known {
+		value := costEstimate.TotalCostUSD
+		estimatedCostUSD = &value
+
+		pricingSnapshot = &PricingSnapshot{
+			Source:                   costEstimate.Rate.Source,
+			EffectiveStartDate:       costEstimate.Rate.EffectiveStartDate,
+			InputPerMillionUSD:       costEstimate.Rate.InputPerMillionUSD,
+			CachedInputPerMillionUSD: costEstimate.Rate.CachedInputPerMillionUSD,
+			OutputPerMillionUSD:      costEstimate.Rate.OutputPerMillionUSD,
+		}
+	}
+
 	usage := Usage{
-		Provider:         route.Provider,
-		Model:            model,
-		InputTokens:      providerResponse.Usage.InputTokens,
+		Provider:    route.Provider,
+		Model:       model,
+		InputTokens: providerResponse.Usage.InputTokens,
+		CachedInputTokens: providerResponse.
+			Usage.CachedInputTokens,
 		OutputTokens:     providerResponse.Usage.OutputTokens,
-		EstimatedCostUSD: providerResponse.Usage.EstimatedCostUSD,
+		EstimatedCostUSD: estimatedCostUSD,
+		Pricing:          pricingSnapshot,
 	}
 
 	if err := s.repository.RecordInvocation(
@@ -174,7 +279,6 @@ func (s *Service) Invoke(
 		)
 	}
 
-	result.ProviderCalled = true
 	result.Route = &route
 	result.Response = &ModelResponse{
 		Provider: route.Provider,

@@ -181,13 +181,6 @@ func TestAzureOpenAIInvoke(
 			response.Usage.OutputTokens,
 		)
 	}
-
-	if response.Usage.EstimatedCostUSD != nil {
-		t.Fatalf(
-			"expected unknown estimated cost, got %v",
-			response.Usage.EstimatedCostUSD,
-		)
-	}
 }
 
 func TestAzureOpenAIRejectsEmptyPrompt(

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"governance-api/internal/budget"
+	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/provider"
 )
@@ -52,6 +54,31 @@ func (f *fakeRepository) RecordInvocation(
 	return nil
 }
 
+type fakeBudgetService struct {
+	decision string
+	calls    int
+}
+
+func (s *fakeBudgetService) Evaluate(
+	_ context.Context,
+	input budget.EvaluateInput,
+) (budget.Decision, error) {
+	s.calls++
+
+	decision := s.decision
+	if decision == "" {
+		decision = "allow"
+	}
+
+	return budget.Decision{
+		PolicyName: budget.PolicyName,
+		Decision:   decision,
+		Reason:     "test budget decision",
+		CostCenter: input.CostCenter,
+		Currency:   "USD",
+	}, nil
+}
+
 type fakeProvider struct {
 	calls int
 }
@@ -70,11 +97,35 @@ func (f *fakeProvider) Invoke(
 		Content: "test response",
 		Model:   request.Model,
 		Usage: provider.Usage{
-			InputTokens:      10,
-			OutputTokens:     5,
-			EstimatedCostUSD: new(float64),
+			InputTokens:       10,
+			CachedInputTokens: 4,
+			OutputTokens:      5,
 		},
 	}, nil
+}
+
+func newTestCostCalculator() *finops.Calculator {
+	catalog, err := finops.NewStaticCatalog(
+		[]finops.Rate{
+			{
+				Provider:                 "mock",
+				Model:                    "mock-fast-general",
+				InputPerMillionUSD:       2,
+				CachedInputPerMillionUSD: 0.2,
+				OutputPerMillionUSD:      10,
+			},
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	calculator, err := finops.NewCalculator(catalog)
+	if err != nil {
+		panic(err)
+	}
+
+	return calculator
 }
 
 func newTestService(
@@ -87,7 +138,9 @@ func newTestService(
 		&fakeGovernanceService{
 			decision: decision,
 		},
+		&fakeBudgetService{decision: "allow"},
 		repository,
+		newTestCostCalculator(),
 		map[string]provider.Provider{
 			"mock": modelProvider,
 		},
@@ -284,6 +337,369 @@ func TestInvokeRejectsUnsupportedModel(
 		t.Fatalf(
 			"expected repository records=0, got %d",
 			repository.records,
+		)
+	}
+}
+
+func TestInvokeAllowCalculatesCostWithFinOps(
+	t *testing.T,
+) {
+	service, _, _ := newTestService("allow")
+
+	result, err := service.Invoke(
+		context.Background(),
+		InvokeInput{
+			CallerSubject:      "finops-test@example.com",
+			DataClassification: "internal",
+			RequestedModel:     "fast-general",
+			Prompt:             "hello model",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Usage == nil {
+		t.Fatal("expected usage")
+	}
+
+	if result.Usage.EstimatedCostUSD == nil {
+		t.Fatal("expected known FinOps cost")
+	}
+
+	// fakeProvider:
+	// input  = 10 tokens
+	// output = 5 tokens
+	//
+	// pricing:
+	// input  = $2 / 1M
+	// output = $10 / 1M
+	//
+	// 10/1M*2 + 5/1M*10 = $0.00007
+	// 6 non-cached input * $2 / 1M
+	// + 4 cached input * $0.2 / 1M
+	// + 5 output * $10 / 1M
+	// = $0.0000628
+	const expected = 0.0000628
+	const tolerance = 0.000000000001
+
+	actual := *result.Usage.EstimatedCostUSD
+
+	difference := actual - expected
+	if difference < 0 {
+		difference = -difference
+	}
+
+	if difference > tolerance {
+		t.Fatalf(
+			"unexpected estimated cost: %.12f",
+			actual,
+		)
+	}
+}
+
+func TestInvokeAllowReturnsPricingSnapshot(
+	t *testing.T,
+) {
+	service, _, _ := newTestService("allow")
+
+	result, err := service.Invoke(
+		context.Background(),
+		InvokeInput{
+			CallerSubject:      "pricing-audit@example.com",
+			DataClassification: "internal",
+			RequestedModel:     "fast-general",
+			Prompt:             "pricing audit test",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Usage == nil {
+		t.Fatal("expected usage")
+	}
+
+	if result.Usage.Pricing == nil {
+		t.Fatal("expected pricing snapshot")
+	}
+
+	if result.Usage.Pricing.InputPerMillionUSD != 2 {
+		t.Fatalf(
+			"unexpected input price: %f",
+			result.Usage.Pricing.InputPerMillionUSD,
+		)
+	}
+
+	if result.Usage.Pricing.CachedInputPerMillionUSD != 0.2 {
+		t.Fatalf(
+			"unexpected cached input price: %f",
+			result.Usage.Pricing.CachedInputPerMillionUSD,
+		)
+	}
+
+	if result.Usage.Pricing.OutputPerMillionUSD != 10 {
+		t.Fatalf(
+			"unexpected output price: %f",
+			result.Usage.Pricing.OutputPerMillionUSD,
+		)
+	}
+}
+
+func newBudgetGuardrailTestService(
+	governanceDecision string,
+	budgetDecision string,
+) (
+	*Service,
+	*fakeBudgetService,
+	*fakeProvider,
+	*fakeRepository,
+) {
+	modelProvider := &fakeProvider{}
+	repository := &fakeRepository{}
+	budgetService := &fakeBudgetService{
+		decision: budgetDecision,
+	}
+
+	service := NewService(
+		&fakeGovernanceService{
+			decision: governanceDecision,
+		},
+		budgetService,
+		repository,
+		newTestCostCalculator(),
+		map[string]provider.Provider{
+			"mock": modelProvider,
+		},
+		map[string]Route{
+			"fast-general": {
+				RoutedModel: "mock-fast-general",
+				Provider:    "mock",
+				Reason:      "budget guardrail test route",
+			},
+		},
+	)
+
+	return service, budgetService, modelProvider, repository
+}
+
+func budgetGuardrailInvokeInput() InvokeInput {
+	return InvokeInput{
+		CallerSubject:      "budget-test@example.com",
+		CostCenter:         "BUDGET-TEST",
+		UseCase:            "budget-guardrail-test",
+		DataClassification: "internal",
+		RequestedModel:     "fast-general",
+		Prompt:             "synthetic budget guardrail test",
+	}
+}
+
+func TestBudgetGuardrailGovernanceDenyStopsBeforeBudget(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"deny",
+			"allow",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 0 {
+		t.Fatalf(
+			"expected zero budget evaluations, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 0 {
+		t.Fatalf(
+			"expected zero provider calls, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be marked as called")
+	}
+
+	if result.Budget != nil {
+		t.Fatal(
+			"budget must not be evaluated after governance deny",
+		)
+	}
+
+	if result.Route != nil ||
+		result.Response != nil ||
+		result.Usage != nil {
+		t.Fatal(
+			"deny must not create route, response or usage",
+		)
+	}
+}
+
+func TestBudgetGuardrailAllowContinuesToProvider(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"allow",
+			"allow",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 1 {
+		t.Fatalf(
+			"expected one budget evaluation, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 1 {
+		t.Fatalf(
+			"expected one provider call, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "allow" {
+		t.Fatalf(
+			"expected budget allow, got %#v",
+			result.Budget,
+		)
+	}
+
+	if !result.ProviderCalled {
+		t.Fatal("expected provider_called=true")
+	}
+
+	if result.Route == nil {
+		t.Fatal("expected model route")
+	}
+
+	if result.Response == nil {
+		t.Fatal("expected model response")
+	}
+
+	if result.Usage == nil {
+		t.Fatal("expected usage")
+	}
+}
+
+func TestBudgetGuardrailReviewStopsBeforeRoutingAndProvider(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"allow",
+			"review",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 1 {
+		t.Fatalf(
+			"expected one budget evaluation, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 0 {
+		t.Fatalf(
+			"expected zero provider calls, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "review" {
+		t.Fatalf(
+			"expected budget review, got %#v",
+			result.Budget,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be called")
+	}
+
+	if result.Route != nil ||
+		result.Response != nil ||
+		result.Usage != nil {
+		t.Fatal(
+			"budget review must stop before route/provider/usage",
+		)
+	}
+}
+
+func TestBudgetGuardrailDenyStopsBeforeRoutingAndProvider(
+	t *testing.T,
+) {
+	service, budgetService, modelProvider, _ :=
+		newBudgetGuardrailTestService(
+			"allow",
+			"deny",
+		)
+
+	result, err := service.Invoke(
+		context.Background(),
+		budgetGuardrailInvokeInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if budgetService.calls != 1 {
+		t.Fatalf(
+			"expected one budget evaluation, got %d",
+			budgetService.calls,
+		)
+	}
+
+	if modelProvider.calls != 0 {
+		t.Fatalf(
+			"expected zero provider calls, got %d",
+			modelProvider.calls,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "deny" {
+		t.Fatalf(
+			"expected budget deny, got %#v",
+			result.Budget,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be called")
+	}
+
+	if result.Route != nil ||
+		result.Response != nil ||
+		result.Usage != nil {
+		t.Fatal(
+			"budget deny must stop before route/provider/usage",
 		)
 	}
 }

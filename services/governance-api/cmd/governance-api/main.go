@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"governance-api/internal/airouter"
+	"governance-api/internal/budget"
 	"governance-api/internal/config"
 	"governance-api/internal/database"
+	"governance-api/internal/finops"
 	"governance-api/internal/governance"
 	"governance-api/internal/httpserver"
 	"governance-api/internal/provider"
@@ -39,6 +41,9 @@ func main() {
 	governanceRepository := governance.NewPostgresRepository(db)
 	governanceService := governance.NewService(governanceRepository)
 
+	budgetRepository := budget.NewPostgresRepository(db)
+	budgetService := budget.NewService(budgetRepository)
+
 	aiRepository := airouter.NewPostgresRepository(db)
 
 	aiProviders := map[string]provider.Provider{
@@ -51,6 +56,46 @@ func main() {
 			Provider:    "mock",
 			Reason:      "default local mock route",
 		},
+	}
+
+	pricingCatalog, err := finops.NewStaticCatalog(
+		[]finops.Rate{
+			{
+				Provider:                 "mock",
+				Model:                    "mock-fast-general",
+				InputPerMillionUSD:       0,
+				CachedInputPerMillionUSD: 0,
+				OutputPerMillionUSD:      0,
+				Source:                   "local mock",
+			},
+			{
+				Provider:                 "azure-openai",
+				Model:                    "gpt-5-mini",
+				InputPerMillionUSD:       0.25,
+				CachedInputPerMillionUSD: 0.025,
+				OutputPerMillionUSD:      2.00,
+				Source:                   "Azure Retail Prices API",
+				EffectiveStartDate:       "2025-08-01T00:00:00Z",
+			},
+		},
+	)
+	if err != nil {
+		logger.Error(
+			"FinOps pricing catalog initialization failed",
+			"error", err,
+		)
+		os.Exit(1)
+	}
+
+	costCalculator, err := finops.NewCalculator(
+		pricingCatalog,
+	)
+	if err != nil {
+		logger.Error(
+			"FinOps cost calculator initialization failed",
+			"error", err,
+		)
+		os.Exit(1)
 	}
 
 	switch os.Getenv("AI_PROVIDER") {
@@ -120,7 +165,9 @@ func main() {
 
 	aiService := airouter.NewService(
 		governanceService,
+		budgetService,
 		aiRepository,
+		costCalculator,
 		aiProviders,
 		aiRoutes,
 	)
@@ -137,7 +184,7 @@ func main() {
 		Handler:           api.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
+		WriteTimeout:      120 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"governance-api/internal/airouter"
+	"governance-api/internal/budget"
 	"governance-api/internal/governance"
 )
 
@@ -304,5 +305,209 @@ func TestInvokeAITrustedCallerOverridesRequestBody(
 		t.Fatal(
 			"request body must not override trusted caller identity",
 		)
+	}
+}
+
+type fakeBudgetAIService struct {
+	decision string
+}
+
+func (f *fakeBudgetAIService) Invoke(
+	_ context.Context,
+	input airouter.InvokeInput,
+) (airouter.Result, error) {
+	result := airouter.Result{
+		Governance: governance.Request{
+			RequestID:          "req_budget_http_test",
+			CallerSubject:      input.CallerSubject,
+			CostCenter:         input.CostCenter,
+			DataClassification: input.DataClassification,
+			RequestedModel:     input.RequestedModel,
+			PromptHash:         "budget-test-hash",
+			PromptChars:        len(input.Prompt),
+			Metadata:           map[string]any{},
+			Policy: governance.PolicyDecision{
+				PolicyName: "test-governance-policy",
+				Decision:   "allow",
+				Reason:     "governance allows request",
+			},
+		},
+		Budget: &budget.Decision{
+			PolicyName: budget.PolicyName,
+			Decision:   f.decision,
+			Reason:     "test budget decision",
+			CostCenter: input.CostCenter,
+			Currency:   "USD",
+		},
+		ProviderCalled: f.decision == "allow",
+	}
+
+	if f.decision == "allow" {
+		result.Route = &airouter.Route{
+			RequestedModel: input.RequestedModel,
+			RoutedModel:    "mock-fast-general",
+			Provider:       "mock",
+			Reason:         "test route",
+		}
+
+		result.Response = &airouter.ModelResponse{
+			Provider: "mock",
+			Model:    "mock-fast-general",
+			Content:  "test response",
+		}
+
+		result.Usage = &airouter.Usage{
+			Provider:     "mock",
+			Model:        "mock-fast-general",
+			InputTokens:  10,
+			OutputTokens: 5,
+		}
+	}
+
+	return result, nil
+}
+
+func newBudgetAIServer(
+	decision string,
+) *Server {
+	logger := slog.New(
+		slog.NewTextHandler(io.Discard, nil),
+	)
+
+	return NewWithAIRouter(
+		logger,
+		nil,
+		nil,
+		&fakeBudgetAIService{
+			decision: decision,
+		},
+	)
+}
+
+func TestInvokeAIBudgetAllowReturns200(
+	t *testing.T,
+) {
+	recorder := invokeAIRequest(
+		t,
+		newBudgetAIServer("allow"),
+		"internal",
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf(
+			"expected status 200, got %d",
+			recorder.Code,
+		)
+	}
+
+	var result airouter.Result
+
+	if err := json.Unmarshal(
+		recorder.Body.Bytes(),
+		&result,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "allow" {
+		t.Fatalf(
+			"expected budget allow, got %#v",
+			result.Budget,
+		)
+	}
+
+	if !result.ProviderCalled {
+		t.Fatal("expected provider_called=true")
+	}
+}
+
+func TestInvokeAIBudgetReviewReturns202(
+	t *testing.T,
+) {
+	recorder := invokeAIRequest(
+		t,
+		newBudgetAIServer("review"),
+		"internal",
+	)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf(
+			"expected status 202, got %d",
+			recorder.Code,
+		)
+	}
+
+	var result airouter.Result
+
+	if err := json.Unmarshal(
+		recorder.Body.Bytes(),
+		&result,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Governance.Policy.Decision != "allow" {
+		t.Fatalf(
+			"expected governance allow, got %q",
+			result.Governance.Policy.Decision,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "review" {
+		t.Fatalf(
+			"expected budget review, got %#v",
+			result.Budget,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be called")
+	}
+}
+
+func TestInvokeAIBudgetDenyReturns403(
+	t *testing.T,
+) {
+	recorder := invokeAIRequest(
+		t,
+		newBudgetAIServer("deny"),
+		"internal",
+	)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf(
+			"expected status 403, got %d",
+			recorder.Code,
+		)
+	}
+
+	var result airouter.Result
+
+	if err := json.Unmarshal(
+		recorder.Body.Bytes(),
+		&result,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Governance.Policy.Decision != "allow" {
+		t.Fatalf(
+			"expected governance allow, got %q",
+			result.Governance.Policy.Decision,
+		)
+	}
+
+	if result.Budget == nil ||
+		result.Budget.Decision != "deny" {
+		t.Fatalf(
+			"expected budget deny, got %#v",
+			result.Budget,
+		)
+	}
+
+	if result.ProviderCalled {
+		t.Fatal("provider must not be called")
 	}
 }
